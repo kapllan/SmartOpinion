@@ -1,0 +1,38 @@
+microsoft/Phi-3-mini-128k-instruct:
+  client: vllm
+  template: null
+VAGOsolutions/SauerkrautLM-Phi-3-medium:
+  client: vllm
+  template: null
+VAGOsolutions/SauerkrautLM-Nemo-12b-Instruct:
+  client: vllm
+  template: null
+VAGOsolutions/SauerkrautLM-Mixtral-8x7B-Instruct:
+  client: transformers
+  template: prompt_template_1
+VAGOsolutions/SauerkrautLM-1.5b:
+  client: vllm
+  template: null
+numind/NuExtract-large:
+  client: vllm
+  template: null
+VAGOsolutions/Llama-3-SauerkrautLM-70b-Instruct:
+  client: transformers
+  template: prompt_template_3
+VAGOsolutions/Llama-3.1-SauerkrautLM-70b-Instruct:
+  client: transformers
+  template: prompt_template_3
+VAGOsolutions/Llama-3.1-SauerkrautLM-8b-Instruct:
+  client: transformers
+  template: prompt_template_3
+openbmb/MiniCPM-Llama3-V-2_5: # TODO: This model does not generate the same output; you need to set a seed which is strange!
+  client: vi # Stands for visual instruction or multimodal models.
+  template: null
+microsoft/Phi-3-vision-128k-instruct: # Stands for visual instruction or multimodal models.
+  client: vi
+  template: null
+default_hyperparams:
+  max_tokens: 4096
+  temperature: 0.0
+  # do_sample: false
+  repetition_penalty: 1.1

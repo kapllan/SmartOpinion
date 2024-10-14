@@ -1,0 +1,153 @@
+[
+    {
+      "topic": "Umweltschutz",
+      "thema": "Um die Umwelt für kommende Generationen zu bewahren, ist der Schutz natürlicher Ressourcen von zentraler Bedeutung.",
+      "argument": "Luisa Neubauer, eine bekannte Aktivistin, erklärte kürzlich, dass nur ein radikales Umdenken beim Umweltschutz den fortschreitenden Klimawandel aufhalten kann. Strengere Gesetze sind notwendig, um das Gleichgewicht der Natur zu bewahren.",
+      "label": "pro"
+    },
+    {
+      "topic": "Umweltschutz",
+      "thema": "Um die Umwelt für kommende Generationen zu bewahren, ist der Schutz natürlicher Ressourcen von zentraler Bedeutung.",
+      "argument": "Ein Sprecher der Industrie- und Handelskammer betonte, dass überzogene Umweltschutzmaßnahmen kleine und mittlere Unternehmen finanziell belasten, ohne dass ein deutlicher Vorteil für die Umwelt ersichtlich ist.",
+      "label": "contra"
+    },
+    {
+      "topic": "Umweltschutz",
+      "thema": "Um die Umwelt für kommende Generationen zu bewahren, ist der Schutz natürlicher Ressourcen von zentraler Bedeutung.",
+      "argument": "Bäume und Sträucher sind wichtige Bestandteile der Biodiversität, aber nicht jedes Umweltproblem kann durch Aufforstung gelöst werden.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Umweltschutz",
+      "thema": "Um die Umwelt für kommende Generationen zu bewahren, ist der Schutz natürlicher Ressourcen von zentraler Bedeutung.",
+      "argument": "Gestern habe ich ein spannendes Fußballspiel im Fernsehen gesehen. Es endete 3:2.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Klimapolitik",
+      "thema": "Um die globale Erwärmung zu begrenzen, müssen internationale Klimapolitiken stärker in den Fokus rücken.",
+      "argument": "Eine Wissenschaftlerin vom Potsdam-Institut für Klimafolgenforschung sagte kürzlich, dass es dringend erforderlich sei, den CO2-Ausstoß zu senken, um den fortschreitenden Klimawandel zu bremsen. Nur ambitionierte Klimapolitik kann dies ermöglichen.",
+      "label": "pro"
+    },
+    {
+      "topic": "Klimapolitik",
+      "thema": "Um die globale Erwärmung zu begrenzen, müssen internationale Klimapolitiken stärker in den Fokus rücken.",
+      "argument": "Ein Vertreter der Opposition argumentierte, dass die geplanten Maßnahmen Arbeitsplätze kosten und die Wettbewerbsfähigkeit des Landes gefährden könnten, ohne signifikante globale Auswirkungen zu haben.",
+      "label": "contra"
+    },
+    {
+      "topic": "Klimapolitik",
+      "thema": "Um die globale Erwärmung zu begrenzen, müssen internationale Klimapolitiken stärker in den Fokus rücken.",
+      "argument": "Viele Länder haben bereits Maßnahmen ergriffen, um den CO2-Ausstoß zu reduzieren, aber es braucht eine global koordinierte Antwort auf die Herausforderung.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Klimapolitik",
+      "thema": "Um die globale Erwärmung zu begrenzen, müssen internationale Klimapolitiken stärker in den Fokus rücken.",
+      "argument": "Ich habe vor kurzem einen neuen Laptop gekauft. Er hat eine sehr gute Akkulaufzeit.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Sterbehilfe",
+      "thema": "Die Legalisierung der Sterbehilfe gibt Menschen in schwierigen Lebenslagen die Möglichkeit, selbstbestimmt über das Ende ihres Lebens zu entscheiden.",
+      "argument": "Ein Arzt aus Zürich sagte, dass Sterbehilfe in Fällen von unerträglichem Leid ethisch gerechtfertigt sei, da sie den Betroffenen die Möglichkeit gibt, ihre letzten Momente selbstbestimmt zu gestalten.",
+      "label": "pro"
+    },
+    {
+      "topic": "Sterbehilfe",
+      "thema": "Die Legalisierung der Sterbehilfe gibt Menschen in schwierigen Lebenslagen die Möglichkeit, selbstbestimmt über das Ende ihres Lebens zu entscheiden.",
+      "argument": "Ein Ethikprofessor warnte davor, dass die Legalisierung von Sterbehilfe dazu führen könnte, dass vulnerable Menschen sich unter Druck gesetzt fühlen, ihr Leben vorzeitig zu beenden, um ihren Angehörigen nicht zur Last zu fallen.",
+      "label": "contra"
+    },
+    {
+      "topic": "Sterbehilfe",
+      "thema": "Die Legalisierung der Sterbehilfe gibt Menschen in schwierigen Lebenslagen die Möglichkeit, selbstbestimmt über das Ende ihres Lebens zu entscheiden.",
+      "argument": "Viele Menschen, die mit unheilbaren Krankheiten konfrontiert sind, wünschen sich Zugang zu alternativen Formen der medizinischen Betreuung, bevor sie über Sterbehilfe nachdenken.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Sterbehilfe",
+      "thema": "Die Legalisierung der Sterbehilfe gibt Menschen in schwierigen Lebenslagen die Möglichkeit, selbstbestimmt über das Ende ihres Lebens zu entscheiden.",
+      "argument": "Gestern war ich im Supermarkt und habe Äpfel und Bananen gekauft.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Handyspielverbote",
+      "thema": "Handyspiele lenken Schüler häufig vom Unterricht ab, und ein Verbot könnte helfen, die Konzentration zu verbessern.",
+      "argument": "Ein Lehrer aus Berlin sagte, dass Handyspielverbote während des Unterrichts für eine bessere Lernumgebung sorgen und die Schüler ermutigen, sich auf den Unterricht zu konzentrieren.",
+      "label": "pro"
+    },
+    {
+      "topic": "Handyspielverbote",
+      "thema": "Handyspiele lenken Schüler häufig vom Unterricht ab, und ein Verbot könnte helfen, die Konzentration zu verbessern.",
+      "argument": "Ein Psychologe aus Hamburg erklärte, dass Verbote oft zu Trotzverhalten führen und dass es effektiver sei, Schüler in den verantwortungsvollen Umgang mit Handys zu schulen, anstatt sie komplett zu verbieten.",
+      "label": "contra"
+    },
+    {
+      "topic": "Handyspielverbote",
+      "thema": "Handyspiele lenken Schüler häufig vom Unterricht ab, und ein Verbot könnte helfen, die Konzentration zu verbessern.",
+      "argument": "Es gibt viele alternative Möglichkeiten, wie Schüler sinnvoll mit ihren Handys umgehen können, ohne dass diese stören.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Handyspielverbote",
+      "thema": "Handyspiele lenken Schüler häufig vom Unterricht ab, und ein Verbot könnte helfen, die Konzentration zu verbessern.",
+      "argument": "Am Wochenende habe ich einen spannenden Film über Astronomie gesehen.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Hundesteuer",
+      "thema": "Die Hundesteuer ist eine sinnvolle Möglichkeit, um die Kosten für die Instandhaltung öffentlicher Plätze zu decken, die häufig von Hundebesitzern genutzt werden.",
+      "argument": "Ein Stadtrat in München erklärte, dass die Hundesteuer dazu beiträgt, die Kosten für die Instandhaltung von öffentlichen Plätzen zu decken, die von Hundebesitzern stark frequentiert werden.",
+      "label": "pro"
+    },
+    {
+      "topic": "Hundesteuer",
+      "thema": "Die Hundesteuer ist eine sinnvolle Möglichkeit, um die Kosten für die Instandhaltung öffentlicher Plätze zu decken, die häufig von Hundebesitzern genutzt werden.",
+      "argument": "Eine Hundehalterin aus Stuttgart argumentierte, dass die Hundesteuer eine ungerechtfertigte Abgabe sei und keine signifikanten Vorteile für die Stadt oder die Hundebesitzer bringe.",
+      "label": "contra"
+    },
+    {
+      "topic": "Hundesteuer",
+      "thema": "Die Hundesteuer ist eine sinnvolle Möglichkeit, um die Kosten für die Instandhaltung öffentlicher Plätze zu decken, die häufig von Hundebesitzern genutzt werden.",
+      "argument": "Viele Kommunen verwenden die Einnahmen aus der Hundesteuer für die Pflege und Instandhaltung von Parks.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Hundesteuer",
+      "thema": "Die Hundesteuer ist eine sinnvolle Möglichkeit, um die Kosten für die Instandhaltung öffentlicher Plätze zu decken, die häufig von Hundebesitzern genutzt werden.",
+      "argument": "Letzte Woche habe ich angefangen, ein neues Kochbuch auszuprobieren.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Preisbremse für Krankenkassenprämien",
+      "thema": "Eine Preisbremse für Krankenkassenprämien könnte die steigenden Kosten im Gesundheitswesen kontrollieren und vor allem Haushalte mit geringem Einkommen entlasten.",
+      "argument": "Ein Sprecher der Regierung betonte, dass die Preisbremse für Krankenkassenprämien eine der wichtigsten Maßnahmen sei, um die Belastungen für Haushalte mit niedrigem Einkommen zu reduzieren.",
+      "label": "pro"
+    },
+    {
+      "topic": "Preisbremse für Krankenkassenprämien",
+      "thema": "Eine Preisbremse für Krankenkassenprämien könnte die steigenden Kosten im Gesundheitswesen kontrollieren und vor allem Haushalte mit geringem Einkommen entlasten.",
+      "argument": "Ein Sprecher der Regierung betonte, dass die Preisbremse für Krankenkassenprämien eine der wichtigsten Maßnahmen sei, um die Belastungen für Haushalte mit niedrigem Einkommen zu reduzieren.",
+      "label": "pro"
+    },
+    {
+      "topic": "Preisbremse für Krankenkassenprämien",
+      "thema": "Eine Preisbremse für Krankenkassenprämien könnte die steigenden Kosten im Gesundheitswesen kontrollieren und vor allem Haushalte mit geringem Einkommen entlasten.",
+      "argument": "Ein Ökonom äußerte, dass eine Preisbremse zwar kurzfristig helfen könnte, die steigenden Gesundheitskosten zu bewältigen, aber langfristig die Innovationskraft im Gesundheitssektor behindern würde.",
+      "label": "contra"
+    },
+    {
+      "topic": "Preisbremse für Krankenkassenprämien",
+      "thema": "Eine Preisbremse für Krankenkassenprämien könnte die steigenden Kosten im Gesundheitswesen kontrollieren und vor allem Haushalte mit geringem Einkommen entlasten.",
+      "argument": "Obwohl viele Menschen durch die steigenden Prämien finanziell belastet werden, gibt es auch Stimmen, die auf den langen Entscheidungsprozess in der Politik hinweisen, um nachhaltige Lösungen zu finden.",
+      "label": "neutral"
+    },
+    {
+      "topic": "Preisbremse für Krankenkassenprämien",
+      "thema": "Eine Preisbremse für Krankenkassenprämien könnte die steigenden Kosten im Gesundheitswesen kontrollieren und vor allem Haushalte mit geringem Einkommen entlasten.",
+      "argument": "Ich habe mir gerade eine neue Kaffeemaschine gekauft und sie funktioniert wirklich gut.",
+      "label": "neutral"
+    }
+  ]
+  

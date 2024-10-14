@@ -61,16 +61,16 @@ def save_filed(dataframe: pd.DataFrame, field_names: str = None):
     dataframe = dataframe.apply(lambda col: make_naive(col))
 
     # Remove HTML tags from all columns
-    columns = dataframe.columns
-    for col in columns:
-        dataframe[col] = dataframe[col].apply(remove_tags)
+    # columns = dataframe.columns
+    # for col in columns:
+    # dataframe[col] = dataframe[col].apply(remove_tags)
 
     if isinstance(field_names, str):
         field_names = [field_names]
 
     for field_name in field_names:
         field_text = dataframe[field_name].tolist()[0]
-        field_text = BeautifulSoup(field_text).text
+        # field_text = BeautifulSoup(field_text).text
         with open(output_path / Path(f"{field_name}.txt"), "w") as f:
             print(field_text, file=f)
 

@@ -1,0 +1,12 @@
+models:
+  sentence_similarity: intfloat/multilingual-e5-large #PM-AI/bi-encoder_msmarco_bert-base_german
+  llm: VAGOsolutions/Llama-3-SauerkrautLM-70b-Instruct
+  stance_classifier: ../models/deepset_gbert-large_stance_classifier
+paths:
+  logs: ../logs
+  language_detection: ../models/lid.176.bin
+  datasets: ../data/datasets
+  data: ../data
+  models: ../models
+metrics:
+  tr_classification_model: matthews_correlation #f1 ; matthews_correlation
