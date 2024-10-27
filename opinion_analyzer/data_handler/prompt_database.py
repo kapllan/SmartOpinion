@@ -4,8 +4,6 @@ from opinion_analyzer.utils.helper import get_main_config
 
 config = get_main_config()
 
-
-
 random.seed(42)
 example_json_arguments = """
                 
@@ -106,11 +104,62 @@ categorize_argument_zero_shot = """
             Das Label lautet also: 
             """
 
+categorize_argument_zero_shot_cot = """
+            Du bist ein Experte in Sachen Argumentanalyse.
+            Ich gebe dir nun einen Textauszug, der ein Thema beschreibt.
+            Danach gebe ich dir einen Textauszug, der eventuell ein Argument zum Thema darstellt.
+            Du sollst entscheiden, ob der Textauszug ein Pro- oder ein Contra-Argument darstellt oder keins von beiden (neutral).
+            Du darfst also nur eines von folgenden Labels zurückgeben: Pro, Contra, Neutral.
+            Bevor du das Label angibst, musst du immer vorher eine eine Begründung für deine Entscheidung liefern.
+            Also erst die Begründung und darauf aufbauend das Label angeben.
+            
+            Hier einige Beispiele:
+
+            # Das Thema lautet: Um die Umwelt für kommende Generationen zu bewahren, ist der Schutz natürlicher Ressourcen von zentraler Bedeutung.
+
+            # Der Textauszug lautet: Luisa Neubauer, eine bekannte Aktivistin, erklärte kürzlich, dass nur ein radikales Umdenken beim Umweltschutz den fortschreitenden Klimawandel aufhalten kann. Strengere Gesetze sind notwendig, um das Gleichgewicht der Natur zu bewahren.
+
+            # Begründung: Das Argument plädiert für strengere Umweltgesetze und radikale Maßnahmen zum Schutz der Natur, was mit einer 'pro'-Position im Umweltschutz übereinstimmt.
+
+            # Anwort : Pro
+
+            # Das Thema lautet: Die Legalisierung der Sterbehilfe gibt Menschen in schwierigen Lebenslagen die Möglichkeit, selbstbestimmt über das Ende ihres Lebens zu entscheiden.
+
+            # Der Textauszug lautet: Ein Ethikprofessor warnte davor, dass die Legalisierung von Sterbehilfe dazu führen könnte, dass vulnerable Menschen sich unter Druck gesetzt fühlen, ihr Leben vorzeitig zu beenden, um ihren Angehörigen nicht zur Last zu fallen.
+
+            # Begründung: Das Argument weist auf den potenziellen Druck auf schutzbedürftige Personen hin, was es zu einem 'contra'-Argument gegen die Legalisierung der Sterbehilfe macht.
+
+            # Anwort : Contra
+
+            # Das Thema lautet: Die Legalisierung der Sterbehilfe gibt Menschen in schwierigen Lebenslagen die Möglichkeit, selbstbestimmt über das Ende ihres Lebens zu entscheiden.
+
+            # Der Textauszug lautet: Viele Menschen, die mit unheilbaren Krankheiten konfrontiert sind, wünschen sich Zugang zu alternativen Formen der medizinischen Betreuung, bevor sie über Sterbehilfe nachdenken.
+
+            # Begründung: Das Argument weist auf die Komplexität von Entscheidungen am Lebensende hin, ohne eine starke Position zur Sterbehilfe zu beziehen, weshalb es 'neutral' ist.
+
+            # Anwort : Neutral
+            
+            # Das Thema lautet:  In den Diskussionen über die Finanzierung des Bürgergeldes gab es Streitpunkte hinsichtlich der Dauer des staatlichen Kostenaufwands und der Zuständigkeit.
+
+            # Der Textauszug lautet:  Es gibt Meinungsverschiedenheiten über die Dauer der Ausnahmegesetze fürs Bürgergeld.
+
+            # Begründung: Das Argument ist kein Argument als solches, da es lediglich den Sachverhalt reproduziert ohne irgendwelche neuen Erkenntnisse oder Begründungen zu liefern.
+            
+            # Anwort : Neutral
+            
+            Jetzt bist du dran.
+
+            # Das Thema lautet: {topic_text}
+
+            # Der Textauszug lautet: {text_sample}
+
+            """
+
 categorize_argument_few_shot = """
             Aufgabe: Basierend auf dem angegebenen Thema und dem Argument klassifiziere, ob das Argument pro (unterstützt das Thema), contra (lehnt das Thema ab) oder neutral (nicht relevant zum Thema) ist.
-            
+
             Zunächst gebe ich dir einige Beispiele, damit du siehst, wie man es machen muss:
-            
+
             """
 with open(config["paths"]["datasets"] / "fewshot_examples_chatgpt.json", "r") as f:
     few_shot_examples = js.load(f)
@@ -118,25 +167,21 @@ with open(config["paths"]["datasets"] / "fewshot_examples_chatgpt.json", "r") as
 random.shuffle(few_shot_examples)
 
 for example in few_shot_examples:
-    few_shot_example = (
-        f"""
+    few_shot_example = f"""
                 # Thema: {example["thema"]}
                 # Argument: {example["argument"]}
                 # Label: {example["label"]}
                 
                 """
-    )
     categorize_argument_few_shot += few_shot_example
 
-few_shot_example = (
-    """ Hier ist nun ein Beispiel, um selbst zu entscheiden. Füge nur das Label ein:
+few_shot_example = """ Hier ist nun ein Beispiel, um selbst zu entscheiden. Füge nur das Label ein:
     
                 # Thema: {topic_text}
                 # Argument: {text_sample}
                 # Label: 
 
                 """
-)
 categorize_argument_few_shot += few_shot_example
 
 is_argument = """
@@ -180,6 +225,23 @@ expand_sentence = """
                     
                     """
 
+make_sentence_concrete = """
+                    Du bist ein Kommunikatonsexperte.
+                    Ich gebe dir einen Satz und einen Kontext, in dem der Satz vorkommt.
+                    Schreibe den Satz so um, dass er auch ohne den Kontext zu verstehen ist.
+                    
+                    Wichtig: Gib nur den reformulierten Satz zurück und sag sonst nichts weiter!
+
+                    # Hier ist der Satz:
+                    {sentence}
+
+                    # Hier ist der Kontext:
+                    {context}
+
+                    # Der neue Satz lautet:
+
+                    """
+
 find_main_points = """
                     Du bist ein Experte in Sachen Textanalyse.
                     Ich gebe dir einen Textauszug.
@@ -189,6 +251,74 @@ find_main_points = """
                     {text}
                     """
 
+find_reasoning = """
+                Es geht um folgende Grundaussage:
+                
+                {topic}
+                
+                Ein Analyse hat gesagt, dass folgender Auszug ein {stance}-Argument ist:
+                
+                {claim}
+                
+                Ich gebe dir nun einen breiten Kontext für den genannten Auszug.
+                Extrahiere aus dem Kontext die Begründung für das {stance}-Argument.
+                Sofern du eine Begründung finden kannst, extrahiere sie einfach nur und verändere nicht den Wortlaut.
+                Wenn du keine Begründung finden kannst, sag einfach: Keine Begründung.
+                
+                Hier ist der Kontext:
+                
+                {context}
+                """
+
+find_reasoning = """
+                Ich gebe dir folgenden Auszug:
+
+                {claim}
+
+                Nachfolgend gebe ich dir den bereiten Kontext, in dem der Auszug vorkommt.
+                
+                {context}
+                
+                
+                Falls der Kontext einen Abschnitt mit einer Begründung für die Aussage im Auszug enthält, extrahiere den
+                Abschnitt und formuliere die Begründung kurz und prägnant in eigenen Worten. Strukturiere deine Antwort als JSON:
+                
+                {{
+                    "reasoning_segment":"Extrahierter Abschnitt mit der Begründung.", 
+                    "reasoning":"Begründung in eigenen Worten."
+                }} 
+                
+                Wenn du keinerlei Begründugn findest, gib einfach leere Strings zurück, wie folgt:
+                
+                {{
+                    "reasoning_segment":"", 
+                    "reasoning":""
+                }}
+                
+                """
+
+extract_person = """
+                Ich gebe dir einen Satz sowie den Kontext, in dem der Satz vorkommt.
+                Basierend auf den Satz und dem Kontext fülle folgende JSON aus:
+                
+                {{
+                    "person": "Person, von der der Satz kommt.",
+                    "party": "Partei, die die Person angehört.",
+                    "canton": "Partei, die die Person angehört."
+                }}
+                
+                Solltest du zu den Feldern in der JSON keine Informationen finden, 
+                trage einfach leere Werte ein.
+                
+                Wichtig: Gibt nur die JSON zurück und sag nichts weiter!
+                
+                # Satz:
+                {sentence}
+                
+                # Kontext:
+                {context}
+                """
+
 prompt_dict = {
     "extract_arguments_1": extract_arguments_1,
     "example_json_arguments": example_json_arguments,
@@ -197,11 +327,14 @@ prompt_dict = {
     "reformat_arguments": reformat_arguments,
     "categorize_argument_zero_shot": categorize_argument_zero_shot,
     "categorize_argument_few_shot": categorize_argument_few_shot,
+    "categorize_argument_zero_shot_cot": categorize_argument_zero_shot_cot,
     "is_argument": is_argument,
     "expand_sentence": expand_sentence,
+    "make_sentence_concrete": make_sentence_concrete,
     "find_main_points": find_main_points,
     "is_debatable": is_debatable,
+    "find_reasoning": find_reasoning,
+    "extract_person": extract_person,
 }
 if __name__ == "__main__":
-
     print(prompt_dict["categorize_argument_few_shot"])

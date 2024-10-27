@@ -1,6 +1,7 @@
 from transformers import MBartForConditionalGeneration, MBart50Tokenizer, pipeline
 from opinion_analyzer.utils.helper import get_main_config
 import pandas as pd
+import argparse
 from tqdm import tqdm
 from opinion_analyzer.inference.client_handler import ClientHandler
 
@@ -47,7 +48,18 @@ def llm_translate(text: str, llm_pipeline) -> str:
 
 
 if __name__ == "__main__":
-    # Load your dataset (CSV)
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-d",
+        "--dataset",
+        type=str,
+        help="Specify if you want to translate the argument dataset or the evidence dataset.",
+        choices=["argument", "evidence"],
+    )
+
+    args = parser.parse_args()
+
 
     config = get_main_config()
 
@@ -69,18 +81,29 @@ if __name__ == "__main__":
     tokenizer.src_lang = src_lang
 
     argument_training_dataset_path = config["paths"]["datasets"] / "IBM_Debater_(R)_XArgMining" / "Machine Translations"
-    df = pd.read_csv(argument_training_dataset_path / "Arguments_6L_MT.csv")
-    df["topic_EN"] = df["topic_EN"].progress_apply(make_first_char_capital)
-    df["argument_EN"] = df["argument_EN"].progress_apply(make_first_char_capital)
-    """df["topic_DE_own"] = df["topic_EN"].progress_apply(
-        lambda x: translator(x, src_lang=src_lang, tgt_lang=tgt_lang)[0]["translation_text"]
-    )
-    df["argument_DE_own"] = (df["argument_EN"].progress_apply(
-        lambda x: translator(x, src_lang=src_lang, tgt_lang=tgt_lang)[0]["translation_text"]
-    ))"""
 
-    df["topic_DE_own"] = df["topic_EN"].progress_apply(lambda x: llm_translate(x, ch)
-                                                       )
-    df["argument_DE_own"] = (df["argument_EN"].progress_apply(lambda x: llm_translate(x, ch)))
+    if args.dataset == "argument":
+        df = pd.read_csv(argument_training_dataset_path / "Arguments_6L_MT.csv")
+        df["topic_EN"] = df["topic_EN"].progress_apply(make_first_char_capital)
+        df["argument_EN"] = df["argument_EN"].progress_apply(make_first_char_capital)
 
-    df.to_csv(argument_training_dataset_path / "Arguments_6L_MT_own_translations.csv", index=False)
+        """df["topic_DE_own"] = df["topic_EN"].progress_apply(
+            lambda x: translator(x, src_lang=src_lang, tgt_lang=tgt_lang)[0]["translation_text"]
+        )
+        df["argument_DE_own"] = (df["argument_EN"].progress_apply(
+            lambda x: translator(x, src_lang=src_lang, tgt_lang=tgt_lang)[0]["translation_text"]
+        ))"""
+
+        df["topic_DE_own"] = df["topic_EN"].progress_apply(lambda x: llm_translate(x, ch)
+                                                           )
+        df["argument_DE_own"] = (df["argument_EN"].progress_apply(lambda x: llm_translate(x, ch)))
+
+        df.to_csv(argument_training_dataset_path / "Arguments_6L_MT_own_translations.csv", index=False)
+    elif args.dataset == "evidence":
+        df = pd.read_csv(argument_training_dataset_path / "Evidence_6L_MT.csv")
+        df["sentence_EN"] = df["sentence_EN"].progress_apply(make_first_char_capital)
+
+        df["sentence_DE_own"] = df["sentence_EN"].progress_apply(lambda x: llm_translate(x, ch))
+        df["topic_DE_own"] = df["topic_EN"].progress_apply(lambda x: llm_translate(x, ch))
+
+        df.to_csv(argument_training_dataset_path / "Evidence_6L_MT_own_translations.csv", index=False)

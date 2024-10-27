@@ -13,8 +13,9 @@ from opinion_analyzer.data_handler.prompt_templates import template_dict
 from opinion_analyzer.data_handler.prompt_database import is_argument
 from opinion_analyzer.utils.helper import (
     get_model_client_config,
-    make_sentences_concrete
+    make_sentences_concrete,
 )
+from opinion_analyzer.data_handler.prompt_database import prompt_dict
 from opinion_analyzer.utils.log import get_logger
 
 model_client_config = get_model_client_config()
@@ -178,7 +179,7 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
         return params
 
     def generate_vi(
-            self, prompt: str, params: dict = None, img: Image.Image = None
+        self, prompt: str, params: dict = None, img: Image.Image = None
     ) -> str:
         """
         Generate a response from a visual instruction model based on a given prompt and an optional image.
@@ -241,7 +242,7 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
             )
 
             # Slice the generated token IDs to exclude the input tokens
-            generate_ids = generate_ids[:, inputs["input_ids"].shape[1]:]
+            generate_ids = generate_ids[:, inputs["input_ids"].shape[1] :]
 
             response = self.processor.batch_decode(
                 generate_ids,
@@ -254,7 +255,7 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
         raise ValueError("No valid text generation pipeline found.")
 
     def generate(
-            self, prompt: str, params: dict = None, img: Image.Image = None
+        self, prompt: str, params: dict = None, img: Image.Image = None
     ) -> str:
         """
         Handles the text generation based on the active text generation pipeline.
@@ -291,7 +292,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-mnp",
         "--model_name_or_path",
-        default="VAGOsolutions/Llama-3-SauerkrautLM-70b-Instruct",
+        default="VAGOsolutions/Llama-3.1-SauerkrautLM-70b-Instruct",
         type=str,
         help="Specify the model name.",
     )
@@ -307,30 +308,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ch = ClientHandler(args.model_name_or_path)
 
-    context = """Am 23. Januar 2020 reichte die Sozialdemokratische Partei der Schweiz die Volksinitiative «Maximal 10 % des Einkommens für die Krankenkassenprämien (Prämien-Entlastungs-Initiative)» mit rund 118’00 Unterschriften ein. Die Initiative will, dass Bund und Kantone die Versicherten bei den Prämien für die obligatorische Krankenpflegeversicherung entlasten. 
+    context = """Per 1. April 2022 haben die Kantone wieder die Hauptverantwortung in der Bewältigung der Covid-19-Epidemie übernommen. Dem Bund sollen aber weiterhin einzelne bewährte Instrumente zum Schutz der öffentlichen Gesundheit zur Verfügung stehen. Der Bundesrat möchte deshalb einzelne Bestimmungen des Covid-19-Gesetzes verlängern, längstens bis Ende Juni 2024.
+Dazu gehören die Testkosten. Der Bund soll diese noch bis Ende 2022 übernehmen, danach würden gemäss Vorschlag des Bundesrates die Kantone die Kosten für die Covid-Tests tragen. Im Weiteren sollen die Bestimmungen zum Covid-Zertifikat bis Mitte 2024 verlängert werden. Damit soll das Zertifikat weiterhin international kompatibel und die Reisefreiheit gewährleistet bleiben. Die Bundeskompetenz zur Förderung der Entwicklung von Covid-19-Arzneimitteln, die Regelung zum Schutz der vulnerablen Arbeitnehmenden (z.B. durch die Erlaubnis von Home-Office) und die Bestimmungen für Massnahmen im Ausländer- und Asylbereich und in Bezug auf die Grenzgängerinnen und Grenzgänger sollen ebenfalls bis 30. Juni 2024 verlängert werden.
+Weiter sollen die gesetzlichen Grundlagen der SwissCovid-App durch eine Anpassung des Epidemiengesetzes aufrechterhalten bleiben, damit die seit dem 1. April 2022 deaktivierte App in den Wintermonaten 2023/2024 bei Bedarf wieder eingesetzt werden kann.
+Die Änderungen des Covid-19-Gesetzes unterstehen dem Referendum, sollen aber dringlich erklärt werden, da das bestehende Gesetz auf Ende 2022 befristet ist.
+Gegen die Gesetzesänderung wurde das Referendum ergriffen."""
 
-Der Bundesrat beantragt, die Initiative abzulehnen und – als indirekten Gegenvorschlag – mit einer Änderung des Bundesgesetzes über die Krankenversicherung die Kantone zu verpflichten, die Prämienverbilligung so zu regeln, dass diese jährlich einem Mindestanteil der Bruttokosten der obligatorischen Krankenpflegeversicherung entspricht. 
+    sentence = "Dazu gehören die Testkosten."
 
-Die Prämien-Entlastungs-Initiative fordert, dass die Versicherten höchstens 10 Prozent ihres verfügbaren Einkommens für die Prämien aufwenden müssen. Die Prämienverbilligung soll zu mindestens zwei Drittel durch den Bund und zum verbleibenden Betrag durch die Kantone finanziert werden. 
-
-Heute verpflichtet das Bundesgesetz über die Krankenversicherung die Kantone, die Prämien der Versicherten in bescheidenen wirtschaftlichen Verhältnissen zu verbilligen. Der Bund gewährt den Kantonen dazu einen Beitrag. Im Jahr 2020 haben der Bund die Prämien mit 2,9 Milliarden Franken und die Kantone mit 2,6 Milliarden Franken verbilligt. 
-
-Der Bundesrat kann das Anliegen der Initiative, die Versicherten in bescheidenen wirtschaftlichen Verhältnissen zu entlasten, nachvollziehen. Er erachtet es als problematisch, dass mehrere Kantone ihren Anteil an der Finanzierung der Prämienverbilligung in den letzten Jahren gesenkt haben. 
-
-Der Bund müsste jedoch bedeutend mehr Mittel zur Verfügung stellen als bisher, da er mindestens zwei Drittel der Prämienverbilligung finanzieren müsste. Damit müsste er auch für Kosten aufkommen, die von den Kantonen beeinflusst werden können. Die Kantone beeinflussen über ihre Spitalplanung die Spitalkosten und über die Steuerung der Zulassung von Leistungserbringern die ambulanten Kosten. Weil die Prämien zudem stärker steigen als die Einkommen, führt die Initiative rasch zu hohen Mehrkosten für Bund und Kantone. Die Initiative konzentriert sich weiter ausschliesslich auf die Finanzierung. Die Kosten müssen jedoch auch gedämpft werden. 
-
-Der Bundesrat beantragt, die Prämien-Entlastungs-Initiative abzulehnen und einer Änderung des Bundesgesetzes über die Krankenversicherung als indirektem Gegenvorschlag zuzustimmen. Die Kantone sollen verpflichtet werden, die Prämienverbilligung so zu regeln, dass sie einem Mindestanteil der Bruttokosten der obligatorischen Krankenpflegeversicherung im betreffenden Kanton entspricht. Damit erhalten die Kantone einen Anreiz, ihre Bruttokosten zu dämpfen. Die Höhe des Anteils soll davon abhängen, wie stark die verbilligten Prämien die Versicherten mit den untersten Einkommen im betreffenden Kanton belasten. Die Kantone sollen weiterhin bestimmen können, wie sie die Prämienverbilligung ausgestalten.
-
-Gemäss Schätzungen des Bundesamtes für Gesundheit (BAG) in der Botschaft belaufen sich die Mehrkosten zulasten der Kantone mit dem Gegenvorschlag im Jahr 2024 rund 600 Millionen Franken. Bei Annahme der Initiative würden sich die Mehrkosten zulasten der Kantone auf 1,1 Milliarde Franken belaufen."""
-
-    sentence = "Am 23. Januar 2020 reichte die Sozialdemokratische Partei der Schweiz die Volksinitiative «Maximal 10 % des Einkommens für die Krankenkassenprämien (Prämien-Entlastungs-Initiative)» mit rund 118’00 Unterschriften ein."
-
-    prompt = is_argument.format(topic_text="Kindergeld sollte verboten werden.",
-                                text_sample="Kindergeld ist nicht wichtig, da es vor allem Frauen nicht unterstützt, weiterhin berufstätig zu sein.")
-
-    answer = ch.generate(
-        prompt
+    prompt = prompt_dict["make_sentence_concrete"].format(
+        sentence=sentence,
+        context=context,
     )
+
+    answer = ch.generate(prompt)
     print(answer)
 
     # results = make_sentences_concrete(text=context, client_handler=ch)

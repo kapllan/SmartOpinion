@@ -1,7 +1,11 @@
-import os
+# Code evaluate the performance of stance detection models on the IBM Debater dataset.
 
+
+import os
+import datetime
 from opinion_analyzer.analyzer import OpinionAnalyzer
 from opinion_analyzer.utils.helper import adjust_labels
+from opinion_analyzer.data_handler.prompt_database import prompt_dict
 from pathlib import Path
 import pandas as pd
 import argparse
@@ -59,7 +63,6 @@ def get_target_name(label: int) -> str:
     return mapping[label]
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -77,6 +80,19 @@ if __name__ == "__main__":
         type=str,
         choices=["llm", "finetuned"],
         help="Specify if you want to use LLMs or a fine-tuned model.",
+    )
+
+    parser.add_argument(
+        "-p",
+        "--prompt",
+        type=str,
+        default="categorize_argument_zero_shot",
+        choices=[
+            "categorize_argument_zero_shot",
+            "categorize_argument_few_shot",
+            "categorize_argument_zero_shot_cot",
+        ],
+        help="Specify the prompt you want to use for the evaluation. Defaults to categorize_argument_zero_shot.",
     )
 
     args = parser.parse_args()
@@ -97,11 +113,21 @@ if __name__ == "__main__":
         opinion_analyzer = OpinionAnalyzer(mnp)
 
         if args.method == "finetuned":
-            model_name = Path(opinion_analyzer.stance_classifier.model.name_or_path).name
+            model_name = Path(
+                opinion_analyzer.stance_classifier.model.name_or_path
+            ).name
         else:
             model_name = mnp.replace("/", "_")
+        current_time = datetime.datetime.now()
 
-        output_dir = Path(f"results_{model_name}")
+        if args.method == "finetuned":
+            subdirectory = (
+                f"method_{args.method}/{current_time.strftime('%Y-%m-%d_%H-%M-%S')}"
+            )
+        else:
+            subdirectory = f"method_{args.method}/{args.prompt}/{current_time.strftime('%Y-%m-%d_%H-%M-%S')}"
+
+        output_dir = Path(f"results_{model_name}") / subdirectory
         os.makedirs(output_dir, exist_ok=True)
 
         path_to_dataset = Path(
@@ -109,22 +135,38 @@ if __name__ == "__main__":
         )
         test_data = pd.read_csv(path_to_dataset)
 
-        test_data = test_data[test_data.stance_conf > 0.5][:10]
+        test_data = test_data[test_data.stance_conf > 0.5][:20]
+
+        test_data["method"] = args.method
+        test_data["prompt"] = args.prompt
+        test_data["model_name"] = model_name
 
         reports_collected = []
 
         test_data["results"] = test_data.progress_apply(
             lambda row: opinion_analyzer.categorize_argument(
-                topic_text=row["topic_DE"], text_sample=row["argument_DE"], method=args.method
+                topic_text=row["topic_DE"],
+                text_sample=row["argument_DE"],
+                method=args.method,
+                prompt=prompt_dict[args.prompt],
             ),
             axis=1,
         )
-        test_data["stance_label_pred_str"] = test_data.results.apply(lambda x: x["label"])
+        test_data["stance_label_pred_str"] = test_data.results.apply(
+            lambda x: x["label"]
+        )
 
         test_data["score"] = test_data.results.apply(lambda x: x["score"])
 
         for threshold in thresholds:
-            test_data["stance_label_pred_str"] = test_data.apply(lambda item: adjust_labels(label=item["stance_label_pred_str"], score=item["score"], threshold=threshold), axis=1)
+            test_data["stance_label_pred_str"] = test_data.apply(
+                lambda item: adjust_labels(
+                    label=item["stance_label_pred_str"],
+                    score=item["score"],
+                    threshold=threshold,
+                ),
+                axis=1,
+            )
             test_data["stance_label_pred"] = test_data.stance_label_pred_str.apply(
                 lambda x: convert_label(x)
             )
@@ -149,9 +191,18 @@ if __name__ == "__main__":
 
             print(report)
 
-            with pd.ExcelWriter(output_dir / f"test_results__{model_name}__with_threshold_{threshold}.xlsx") as writer:
-                test_data.to_excel(writer, index=False, sheet_name=f"Prediction_Results")
+            with pd.ExcelWriter(
+                output_dir
+                / f"test_results__{model_name}__with_threshold_{threshold}__{current_time.timestamp()}.xlsx"
+            ) as writer:
+                test_data.to_excel(
+                    writer, index=False, sheet_name=f"Prediction_Results"
+                )
                 report.to_excel(writer, index=True, sheet_name="Overview ClassReports")
             reports_collected.append(report)
         reports_collected = pd.concat(reports_collected)
-        reports_collected.to_excel(output_dir / f"test_results_collected__{model_name}.xlsx", index=True)
+        reports_collected.to_excel(
+            output_dir
+            / f"test_results_collected__{model_name}__{current_time.timestamp()}.xlsx",
+            index=True,
+        )

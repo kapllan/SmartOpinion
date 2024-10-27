@@ -10,12 +10,17 @@ from PIL import Image
 from spacy.tokens.doc import Doc
 import numpy as np
 import shutil
-from sklearn.metrics import (accuracy_score, f1_score, matthews_corrcoef,
-                             precision_score, recall_score)
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    matthews_corrcoef,
+    precision_score,
+    recall_score,
+)
 from transformers import EvalPrediction
 import fitz
 
-nlp = spacy.load('de_dep_news_trf')
+nlp = spacy.load("de_dep_news_trf")
 
 
 def get_main_config() -> dict:
@@ -86,7 +91,7 @@ def get_model_client_config() -> dict:
 
 
 def concatenate_images_vertically(
-        images: Union[list[Image.Image], list[Union[str, os.PathLike]], str, os.PathLike]
+    images: Union[list[Image.Image], list[Union[str, os.PathLike]], str, os.PathLike]
 ) -> Image.Image:
     """
     Concatenate multiple images vertically.
@@ -207,10 +212,16 @@ def find_ambiguous_words(text: Union[str, Doc]) -> list[str]:
     text = make_spacy_doc(text)
     ambiguous_words = []
 
-    tags_to_ignore = ["attributive possessive pronoun", "non-reflexive personal pronoun"]
+    tags_to_ignore = [
+        "attributive possessive pronoun",
+        "non-reflexive personal pronoun",
+    ]
     for w in text:
         if spacy.explain(w.tag_) not in tags_to_ignore:
-            if re.search(r"(pronoun|pronominal)", spacy.explain(w.tag_)) and w.text not in ambiguous_words:
+            if (
+                re.search(r"(pronoun|pronominal)", spacy.explain(w.tag_))
+                and w.text not in ambiguous_words
+            ):
                 ambiguous_words.append(w.text)
     return ambiguous_words
 
@@ -235,8 +246,13 @@ def find_ambiguous_sentence(text: Union[str, Doc]) -> list[str]:
     return ambiguous_sentences
 
 
-def make_sentences_concrete(text: Union[str, Doc], client_handler, expand_sentence: str, method: Literal["llm", "context"] = "context") -> \
-        list[str]:
+def make_sentences_concrete(
+    text: Union[str, Doc],
+    client_handler,
+    expand_sentence: str,
+    method: Literal["llm", "context"] = "llm",
+    check_ambiguity: bool = False,
+) -> list[str]:
     """
     Disambiguates and rewrites ambiguous sentences in a given text.
 
@@ -252,31 +268,39 @@ def make_sentences_concrete(text: Union[str, Doc], client_handler, expand_senten
     ambiguous_sentences = find_ambiguous_sentence(text)
 
     print(f"{len(ambiguous_sentences)} ambiguous sentences.")
-    print("These are the ambiguous sentences:")
-    for s in ambiguous_sentences:
-        print(s)
-        print('+++++++++++++++++')
+    # print("These are the ambiguous sentences:")
+    # for s in ambiguous_sentences:
+    # print(s)
+    # print('+++++++++++++++++')
 
     all_sentences = [sent.text for sent in text.sents]
     new_sentences = []
+    contexts = []
     for n, sent in enumerate(text.sents):
-        if sent.text in ambiguous_sentences:
-            ambiguous_words = find_ambiguous_words(sent)
+        if sent.text in ambiguous_sentences or check_ambiguity:
+            # ambiguous_words = find_ambiguous_words(sent)
             if method == "llm":
-                context = " ".join(all_sentences[n - 5:n + 5])
-                prompt = expand_sentence.format(ambiguous_words=", ".join(ambiguous_words), sentence=sent.text,
-                                                context=context)
+                context = " ".join(all_sentences[n - 5 : n + 5])
+                prompt = expand_sentence.format(sentence=sent.text, context=context)
                 new_sentence = client_handler.generate(prompt)
             elif method == "context":
-                new_sentence = " ".join(all_sentences[n - 3:n + 3])
+                new_sentence = " ".join(all_sentences[n - 1 : n + 1])
             else:
                 raise f"No method {method} available. Choose between 'llm' or 'context'."
             new_sentences.append(new_sentence)
         else:
             new_sentences.append(sent.text)
+        general_context = " ".join(all_sentences[n - 5 : n + 5])
+        contexts.append(general_context)
 
-    results = [{"original_sentence": all_sentences[n], "new_sentence": new_sentences[n]} for n, _ in
-               enumerate(all_sentences)]
+    results = [
+        {
+            "original_sentence": all_sentences[n],
+            "new_sentence": new_sentences[n],
+            "context": contexts[n],
+        }
+        for n, _ in enumerate(all_sentences)
+    ]
     results = pd.DataFrame(results)
     return results
 
@@ -286,48 +310,53 @@ config = get_main_config()
 
 def compute_metrics_multi_class(p: EvalPrediction, y_true=None, y_pred=None):
     if p is not None:
-        logits = p.predictions[0] if isinstance(
-            p.predictions, tuple) else p.predictions
+        logits = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
         y_pred = np.argmax(logits, axis=1)
         y_true = p.label_ids
 
-    macro_f1 = f1_score(y_true=y_true, y_pred=y_pred,
-                        average='macro', zero_division=0)
-    micro_f1 = f1_score(y_true=y_true, y_pred=y_pred,
-                        average='micro', zero_division=0)
-    weighted_f1 = f1_score(y_true=y_true, y_pred=y_pred,
-                           average='weighted', zero_division=0)
+    macro_f1 = f1_score(y_true=y_true, y_pred=y_pred, average="macro", zero_division=0)
+    micro_f1 = f1_score(y_true=y_true, y_pred=y_pred, average="micro", zero_division=0)
+    weighted_f1 = f1_score(
+        y_true=y_true, y_pred=y_pred, average="weighted", zero_division=0
+    )
     accuracy_not_normalized = accuracy_score(
-        y_true=y_true, y_pred=y_pred, normalize=False)
-    accuracy_normalized = accuracy_score(
-        y_true=y_true, y_pred=y_pred, normalize=True)
+        y_true=y_true, y_pred=y_pred, normalize=False
+    )
+    accuracy_normalized = accuracy_score(y_true=y_true, y_pred=y_pred, normalize=True)
     precision_macro = precision_score(
-        y_true=y_true, y_pred=y_pred, average='macro', zero_division=0)
+        y_true=y_true, y_pred=y_pred, average="macro", zero_division=0
+    )
     precision_micro = precision_score(
-        y_true=y_true, y_pred=y_pred, average='micro', zero_division=0)
+        y_true=y_true, y_pred=y_pred, average="micro", zero_division=0
+    )
     precision_weighted = precision_score(
-        y_true=y_true, y_pred=y_pred, average='weighted', zero_division=0)
+        y_true=y_true, y_pred=y_pred, average="weighted", zero_division=0
+    )
     recall_score_macro = recall_score(
-        y_true=y_true, y_pred=y_pred, average='macro', zero_division=0)
+        y_true=y_true, y_pred=y_pred, average="macro", zero_division=0
+    )
     recall_score_micro = recall_score(
-        y_true=y_true, y_pred=y_pred, average='micro', zero_division=0)
+        y_true=y_true, y_pred=y_pred, average="micro", zero_division=0
+    )
     recall_score_weighted = recall_score(
-        y_true=y_true, y_pred=y_pred, average='weighted', zero_division=0)
+        y_true=y_true, y_pred=y_pred, average="weighted", zero_division=0
+    )
     mcc = matthews_corrcoef(y_true=y_true, y_pred=y_pred)
 
-    return {'macro-f1': macro_f1,
-            'micro-f1': micro_f1,
-            'weighted-f1': weighted_f1,
-            'matthews_correlation': mcc,
-            'accuracy_normalized': accuracy_normalized,
-            'accuracy_not_normalized': accuracy_not_normalized,
-            'macro-precision': precision_macro,
-            'micro-precision': precision_micro,
-            'weighted-precision': precision_weighted,
-            'macro-recall': recall_score_macro,
-            'micro-recall': recall_score_micro,
-            'weighted-recall': recall_score_weighted
-            }
+    return {
+        "macro-f1": macro_f1,
+        "micro-f1": micro_f1,
+        "weighted-f1": weighted_f1,
+        "matthews_correlation": mcc,
+        "accuracy_normalized": accuracy_normalized,
+        "accuracy_not_normalized": accuracy_not_normalized,
+        "macro-precision": precision_macro,
+        "micro-precision": precision_micro,
+        "weighted-precision": precision_weighted,
+        "macro-recall": recall_score_macro,
+        "micro-recall": recall_score_micro,
+        "weighted-recall": recall_score_weighted,
+    }
 
 
 def adjust_labels(label: str, score: float, threshold: float):
