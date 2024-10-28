@@ -1,9 +1,19 @@
 import pandas as pd
 from spacy.lang.lij.tokenizer_exceptions import prefix
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments, \
-    EarlyStoppingCallback, set_seed
+from transformers import (
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+    Trainer,
+    TrainingArguments,
+    EarlyStoppingCallback,
+    set_seed,
+)
 from datasets import Dataset
-from opinion_analyzer.utils.helper import get_main_config, compute_metrics_multi_class, remove_subfolders
+from opinion_analyzer.utils.helper import (
+    get_main_config,
+    compute_metrics_multi_class,
+    remove_subfolders,
+)
 import numpy as np
 import wandb
 import os
@@ -37,8 +47,10 @@ if __name__ == "__main__":
     OUTPUT_DIR = f"./results/{MODEL_NAME}_stance_classifier"
 
     # Initialize Weights and Biases
-    wandb.init(project='stance_classification',
-               name=f"{MODEL_NAME}__{datetime.datetime.now().isoformat(timespec='seconds')}", )
+    wandb.init(
+        project="stance_classification",
+        name=f"{MODEL_NAME}__{datetime.datetime.now().isoformat(timespec='seconds')}",
+    )
 
     label2id = {"Contra": 0, "Pro": 1}
     id2label = {0: "Contra", 1: "Pro"}
@@ -47,8 +59,9 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
     # Specify the model: BERT for sequence classification with 2 classes
-    model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, num_labels=2, id2label=id2label,
-                                                               label2id=label2id)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        MODEL_NAME, num_labels=2, id2label=id2label, label2id=label2id
+    )
 
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
@@ -57,16 +70,26 @@ if __name__ == "__main__":
 
     # Load your dataset (CSV)
     df = pd.read_csv(
-        config["paths"]["datasets"] / "IBM_Debater_(R)_XArgMining" / "Machine Translations" / "Arguments_6L_MT_own_translations.csv")
+        # config["paths"]["datasets"] / "IBM_Debater_(R)_XArgMining" / "Machine Translations" / "Arguments_6L_MT_own_translations.csv")
+        config["paths"]["datasets"]
+        / "IBM_Debater_(R)_XArgMining"
+        / "Machine Translations"
+        / "Arguments_6L_MT.csv"
+    )
 
     # Filter only cases where the confidence was high enough.
     df = df[(df.stance_label_EN.isin([-1, 1]))]
     df = df[(df.quality_score_EN > 0.5)]
 
     # Combine the argument and topic into one input
-    df['input_text'] = df['topic_DE_own'] + f" {tokenizer.sep_token} " + df['argument_DE_own']
+    df["input_text"] = (
+        # df["topic_DE_own"] + f" {tokenizer.sep_token} " + df["argument_DE_own"]
+        df["topic_DE"]
+        + f" {tokenizer.sep_token} "
+        + df["argument_DE"]
+    )
     # -1: "Contra", 0: "Neutral", 1: "Pro"
-    df['label'] = df['stance_label_EN']
+    df["label"] = df["stance_label_EN"]
     df["label"] = df["label"].apply(lambda x: 0 if x == -1 else 1)
     df = df[df["input_text"].apply(lambda x: isinstance(x, str) and len(x) > 1)]
 
@@ -76,15 +99,13 @@ if __name__ == "__main__":
     eval_df = df[df.set == "dev"]
 
     # Convert pandas DataFrame to Hugging Face Dataset object
-    train_dataset = Dataset.from_pandas(train_df[['input_text', 'label']])
-    test_dataset = Dataset.from_pandas(test_df[['input_text', 'label']])
-    eval_dataset = Dataset.from_pandas(eval_df[['input_text', 'label']])
-
+    train_dataset = Dataset.from_pandas(train_df[["input_text", "label"]])
+    test_dataset = Dataset.from_pandas(test_df[["input_text", "label"]])
+    eval_dataset = Dataset.from_pandas(eval_df[["input_text", "label"]])
 
     # Tokenize the dataset
     def tokenize_function(examples):
-        return tokenizer(examples['input_text'], padding="max_length", truncation=True)
-
+        return tokenizer(examples["input_text"], padding="max_length", truncation=True)
 
     train_dataset = train_dataset.map(tokenize_function, batched=True)
     test_dataset = test_dataset.map(tokenize_function, batched=True)
@@ -100,12 +121,12 @@ if __name__ == "__main__":
         per_device_eval_batch_size=16,  # batch size for evaluation
         num_train_epochs=10,  # number of training epochs
         weight_decay=0.01,  # strength of weight decay
-        logging_dir='./logs',  # directory for storing logs
+        logging_dir="./logs",  # directory for storing logs
         load_best_model_at_end=True,
         metric_for_best_model=f"eval_{config['metrics']['tr_classification_model']}",
         greater_is_better=True,
         fp16=True,
-        report_to='wandb',  # report to wandb
+        report_to="wandb",  # report to wandb
     )
 
     # Initialize the Trainer
@@ -116,7 +137,7 @@ if __name__ == "__main__":
         eval_dataset=eval_dataset,
         callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
         compute_metrics=compute_metrics_multi_class,
-        data_collator=data_collator
+        data_collator=data_collator,
     )
 
     # Train the model
@@ -135,20 +156,26 @@ if __name__ == "__main__":
     MODEL_NAME = re.sub("/", "_", MODEL_NAME)
 
     # Save the trained model
-    model.save_pretrained(Path(config["paths"]["models"]) / f"{MODEL_NAME}_stance_classifier")
-    tokenizer.save_pretrained(Path(config["paths"]["models"]) / f"{MODEL_NAME}_stance_classifier")
+    model.save_pretrained(
+        Path(config["paths"]["models"]) / f"{MODEL_NAME}_stance_classifier"
+    )
+    tokenizer.save_pretrained(
+        Path(config["paths"]["models"]) / f"{MODEL_NAME}_stance_classifier"
+    )
     """with open(Path(config["paths"]["models"]) / f"{MODEL_NAME}_stance_classifier" / "label2id.json", "w") as file:
         js.dump(label2id, file=file)"""
 
     os.makedirs(Path("predictions") / f"{MODEL_NAME}_stance_classifier", exist_ok=True)
 
     # Apply the trained model to the test_dataset
-    predictions, labels, metrics = trainer.predict(test_dataset, metric_key_prefix="test")
+    predictions, labels, metrics = trainer.predict(
+        test_dataset, metric_key_prefix="test"
+    )
     metrics["test_samples"] = len(test_dataset)
     predicted_labels = np.argmax(predictions, axis=1)
 
     # Save the results to a DataFrame
-    test_df['predicted_label'] = predicted_labels
+    test_df["predicted_label"] = predicted_labels
 
     # test_metrics = compute_metrics_multi_class(p=None, y_true=test_df['label'], y_pred=test_df['predicted_label'])
     # test_metrics = {f"test/{k}": v for k, v in test_metrics.items()}
@@ -157,6 +184,9 @@ if __name__ == "__main__":
     wandb.log(metrics)
 
     # Save the DataFrame to an Excel file
-    test_df.to_excel(Path("predictions") / f"{MODEL_NAME}_stance_classifier" / "test_results.xlsx", index=False)
+    test_df.to_excel(
+        Path("predictions") / f"{MODEL_NAME}_stance_classifier" / "test_results.xlsx",
+        index=False,
+    )
 
     remove_subfolders(OUTPUT_DIR)
