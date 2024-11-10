@@ -7,13 +7,15 @@ import os
 from pathlib import Path
 from pprint import pprint
 from typing import Literal
-
+from ast import literal_eval
 import pandas as pd
 import spacy
 from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer, util
 from transformers import pipeline
-
+import chromadb
+from chromadb.utils import embedding_functions
+import torch
 from opinion_analyzer.data_handler.prompt_database import prompt_dict
 from opinion_analyzer.inference.client_handler import ClientHandler
 from opinion_analyzer.utils.helper import (
@@ -33,19 +35,86 @@ config = get_main_config()
 # log = get_logger()
 
 
+def prepare_documents(
+    text: Path | str, method: Literal["llm", "context", None], client_handler
+) -> list[dict]:
+    """
+    Prepare documents for text processing.
+
+    This function handles text extraction from different types of documents and processes the text
+    according to the specified method. The current implementation supports text files (.txt) and
+    PDF documents (.pdf).
+
+    :param path: The file path of the document to be processed.
+    :type path: Path
+    :param method: The method to be used for processing the text. It can be "llm", "context", or None.
+                   Defaults to "llm".
+    :type method: Literal["llm", "context", None], optional
+    :param client_handler: The client handler object used for processing the text.
+    :type client_handler: ClientHandler
+
+    :raises ValueError: If the document extension is not supported (i.e., not .txt or .pdf).
+
+    :return: A list of dictionaries containing the processed and expanded text.
+    :rtype: list[dict]
+    """
+    if os.path.exists(text):
+        text = Path(text)
+        if text.name.endswith("txt"):
+            text = open(text).read()
+            text = BeautifulSoup(text, features="lxml").text
+        elif text.name.endswith("pdf"):
+            text = " ".join(extract_text_from_pdf(text))
+        else:
+            raise ValueError(f"Can handle only PDF or txt documents.")
+
+    text_expended_context = make_sentences_concrete(
+        text=text,
+        client_handler=client_handler,
+        expand_sentence=prompt_dict[config["prompts"]["make_sentence_concrete"]],
+        method=method,
+    )
+    return text_expended_context
+
+
 class OpinionAnalyzer(ClientHandler):
     stance_classifier = pipeline(
         "text-classification", model=config["models"]["stance_classifier"]
     )
 
     stance_class_threshold = 0.9
-    """def __init__(self):
-        # Call the parent class's __init__ method
-        super().__init__()
-        self.stance_classifier = pipeline("text-classification",
-                                          model=config["models"]["stance_classifier"])
 
-        self.stance_class_threshold = 0.5"""
+    def __init__(self, model_name_or_path):
+        # Call the parent class's __init__ method
+        super().__init__(model_name_or_path)
+
+        self.stance_classifier = pipeline(
+            "text-classification", model=config["models"]["stance_classifier"]
+        )
+
+        self.stance_class_threshold = 0.5
+
+        self.sentence_transformer_ef = (
+            embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name=config["models"]["sentence_similarity"]
+            )
+        )
+
+        self.chroma_client = chromadb.PersistentClient(
+            str(config["paths"]["data"] / config["database"]["chromadb"])
+        )
+
+        self.existing_collections = self.chroma_client.list_collections()
+
+        if len(self.existing_collections) > 0 and config["database"]["chromadb"] in [
+            ec.name for ec in self.existing_collections
+        ]:
+            self.collection = self.chroma_client.get_collection(
+                config["database"]["chromadb"],
+                embedding_function=self.sentence_transformer_ef,
+            )
+
+        self.sent_model = SentenceTransformer(config["models"]["sentence_similarity"])
 
     def segment_argument_text(self, text: str, prompt: str = None):
         if prompt is None:
@@ -146,6 +215,146 @@ class OpinionAnalyzer(ClientHandler):
 
         return self.generate(prompt=prompt)
 
+    def find_arguments(self, topic_text: str, rewrite=True) -> list[dict]:
+        results = []
+
+        if rewrite:
+            print("Rewriting topic")
+            topic_text_expended_context = prepare_documents(
+                text=topic_text,
+                method="llm",
+                client_handler=super(),
+            )
+
+            topic_text_segmented_rw = topic_text_expended_context[
+                "new_sentence"
+            ].tolist()
+            topic_text_segmented = topic_text_expended_context[
+                "original_sentence"
+            ].tolist()
+
+            all_documents = self.collection.get(
+                include=["documents", "metadatas", "embeddings"],
+                limit=10000,
+                offset=0,
+            )
+
+            # Prepare data for JSON output
+            output_data = [
+                {
+                    "id": doc_id,
+                    "text": doc_text,
+                    "metadatas": metadata,
+                    "embedding": (
+                        embedding.tolist() if embedding is not None else None
+                    ),  # Convert numpy array to list for JSON compatibility
+                }
+                for doc_id, doc_text, metadata, embedding in zip(
+                    all_documents["ids"],
+                    all_documents["documents"],
+                    all_documents["metadatas"],
+                    all_documents["embeddings"],
+                )
+            ]
+
+            argument_text_segmented_rw = [doc["text"] for doc in output_data]
+            argument_text_segmented = [
+                doc["metadatas"]["original_sentence"] for doc in output_data
+            ]
+            argument_text_contexts = [
+                doc["metadatas"]["context"] for doc in output_data
+            ]
+            argument_text_segmented_emb = torch.tensor(
+                [doc["embedding"] for doc in output_data]
+            )
+
+        for segment_idx, segment in enumerate(topic_text_segmented_rw):
+            segment_emb = self.sent_model.encode(segment)
+            print("Extracting the arguments for the following topic:\n")
+            print(segment)
+            print("--------")
+            results_semantic_search = util.semantic_search(
+                segment_emb, argument_text_segmented_emb
+            )[0]
+            results_semantic_search = [
+                x
+                for x in results_semantic_search
+                if x["score"] > config["thresholds"]["sentence_similarity"]
+            ]
+            for idx, sent in enumerate(argument_text_segmented_rw):
+                print(sent)
+                if len(sent) > 10:
+                    if idx in [x["corpus_id"] for x in results_semantic_search]:
+                        result = self.categorize_argument(
+                            topic_text=segment, text_sample=sent, method="llm"
+                        )
+                        stance = adjust_labels(
+                            label=result["label"],
+                            score=result["score"],
+                            threshold=self.stance_class_threshold,
+                        )
+
+                        # Extracting the reasoning for the argument
+                        reason = self.generate(
+                            prompt=prompt_dict[
+                                config["prompts"]["find_reasoning"]
+                            ].format(
+                                # topic=segment,
+                                claim=sent,
+                                stance=stance,
+                                context=argument_text_contexts[idx],
+                            )
+                        )
+
+                        try:
+                            reason = literal_eval(reason)
+                        except SyntaxError as se:
+                            print(f"SyntaxError: {se}")
+                            reason = {"reasoning_segment": "", "reasoning": ""}
+
+                        # Extracting the person of the argument
+                        person_info = {"person": "", "party": "", "canton": ""}
+                        if stance in ["pro", "contra"]:
+                            person_info = self.generate(
+                                prompt=prompt_dict[
+                                    config["prompts"]["extract_person"]
+                                ].format(
+                                    # topic=segment,
+                                    sentence=sent,
+                                    # stance=stance,
+                                    context=argument_text_contexts[idx],
+                                )
+                            )
+
+                            try:
+                                person_info = literal_eval(person_info)
+                            except SyntaxError as se:
+                                print(f"SyntaxError: {se}")
+                                person_info = {"person": "", "party": "", "canton": ""}
+
+                        entry = {
+                            "topic_original": topic_text_segmented[segment_idx],
+                            "topic_rewritten": segment,
+                            "argument_rewritten": sent,
+                            "argument_original": argument_text_segmented[idx],
+                            "argument_reason": result["model_generation"],
+                            "person": person_info["person"],
+                            "party": person_info["party"],
+                            "canton": person_info["canton"],
+                            "context": argument_text_contexts[idx],
+                            "label": stance,
+                            "score": result["score"],
+                            "reasoning": reason["reasoning"],
+                            "reasoning_segment": reason["reasoning_segment"],
+                            "similarity": [
+                                x
+                                for x in results_semantic_search
+                                if x["corpus_id"] == idx
+                            ][0]["score"],
+                        }
+
+                        yield entry
+        
 
 if __name__ == "__main__":
 
@@ -156,7 +365,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-mnp",
         "--model_name_or_path",
-        default=None,
+        default=config["models"]["llm"],
         type=str,
         help="Specify the model name.",
     )
@@ -213,190 +422,235 @@ if __name__ == "__main__":
         help="Specify the timestamp to create a subfolder where the results are stored. Defaults to None. If None, the current timestamp is used.",
     )
 
+    parser.add_argument(
+        "-cn",
+        "--collection_name",
+        type=str,
+        default="smart_opinion_default_collection",
+        help="Specify the name of the collection.",
+    )
+
     args = parser.parse_args()
+
+    if args.collection_name is not None and args.topic is None:
+        raise "If you select a chromadb collection you need to pass the topic as a text."
 
     args.business_id = str(args.business_id)
 
     sent_model = SentenceTransformer(config["models"]["sentence_similarity"])
 
+    sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+        model_name=config["models"]["sentence_similarity"]
+    )
+
     opinion_analyzer = OpinionAnalyzer(args.model_name_or_path)
 
-    results = []
-
-    if args.topic is not None:
-        topic_text = args.topic
-    else:
-        topic_text = open(
-            config["paths"]["data"]
-            / "referendums"
-            / args.business_id
-            / "InitialSituation.txt"
-        ).read()
-        topic_text = BeautifulSoup(topic_text, features="lxml").text
-
-    path_to_argument_file = (
-        config["paths"]["data"] / "referendums" / args.business_id / args.file
+    # Initialize Chroma
+    chroma_client = chromadb.PersistentClient(
+        str(config["paths"]["data"] / args.collection_name)
     )
-    if path_to_argument_file.name.endswith("txt"):
-        argument_text = open(
-            config["paths"]["data"] / "referendums" / args.business_id / args.file
-        ).read()
-        argument_text = BeautifulSoup(argument_text, features="lxml").text
-    elif path_to_argument_file.name.endswith("pdf"):
-        argument_text = " ".join(extract_text_from_pdf(path_to_argument_file))
 
-    if args.rewrite:
-        topic_text_expended_context = make_sentences_concrete(
-            text=topic_text,
-            client_handler=opinion_analyzer,
-            expand_sentence=prompt_dict[config["prompts"]["make_sentence_concrete"]],
-        )
-        argument_text_expended_context = make_sentences_concrete(
-            text=argument_text,
-            client_handler=opinion_analyzer,
-            expand_sentence=prompt_dict[config["prompts"]["make_sentence_concrete"]],
+    existing_collections = chroma_client.list_collections()
+    if len(existing_collections) > 0 and args.collection_name in [
+        ec.name for ec in existing_collections
+    ]:
+        collection = chroma_client.get_collection(
+            args.collection_name, embedding_function=sentence_transformer_ef
         )
 
-        topic_text_segmented_rw = topic_text_expended_context["new_sentence"].tolist()
-        topic_text_segmented = topic_text_expended_context["original_sentence"].tolist()
-        argument_text_segmented_rw = argument_text_expended_context[
-            "new_sentence"
-        ].tolist()
-        argument_text_segmented = argument_text_expended_context[
-            "original_sentence"
-        ].tolist()
-        argument_text_contexts = argument_text_expended_context["context"].tolist()
+    while True:
+        args.topic = input("You: ")  # Get input from the user
 
-    else:
-        if len(topic_text) > 500:
-            topic_text_segmented_rw = [
-                sent.text for sent in nlp(topic_text).sents if len(sent.text) > 10
-            ]
-            topic_text_segmented = [
-                sent.text for sent in nlp(topic_text).sents if len(sent.text) > 10
-            ]
-        else:
-            topic_text_segmented_rw = [topic_text]
-            topic_text_segmented = [topic_text]
-        if len(argument_text) > 500:
-            argument_text_segmented_rw = [
-                sent.text for sent in nlp(argument_text).sents if len(sent.text) > 10
-            ]
-            argument_text_segmented = [
-                sent.text for sent in nlp(argument_text).sents if len(sent.text) > 10
-            ]
-        else:
-            argument_text_segmented_rw = [argument_text]
-            argument_text_segmented = [argument_text]
+        if args.topic.lower() == "bye":
+            print("Chatbot: Goodbye! Have a great day!")
+            break  # Exit the loop if the user types "bye"
 
-    argument_text_segmented_emb = sent_model.encode(argument_text_segmented_rw)
+        results = []
 
-    is_argument_list = []
+        if args.topic is not None:
+            topic_text = args.topic
 
-    for segment_idx, segment in enumerate(topic_text_segmented_rw):
-        segment_emb = sent_model.encode(segment)
-        print("Extracting the arguments for the following topic:\n")
-        print(segment)
-        print("--------")
-        results_semantic_search = util.semantic_search(
-            segment_emb, argument_text_segmented_emb
-        )[0]
-        results_semantic_search = [
-            x for x in results_semantic_search if x["score"] > 0.8
-        ]
-        for idx, sent in enumerate(argument_text_segmented_rw):
-            if idx in [x["corpus_id"] for x in results_semantic_search]:
-                # TODO: Add a prompt to distinguish whether something is a Beschluss or not
-                # TODO: Add a prompt to distinguish whether something could be an argument or not.
-                debatable = "ja"
-                if args.debatability_check:
-                    debatable = (
-                        opinion_analyzer.is_debatable(sent).lower().strip() == "ja"
-                    )
-                if debatable == "ja":
-                    # if [segment, sent] in is_argument_list or opinion_analyzer.is_argument(topic_text=segment, text_sample=sent).lower().strip() == "ja":
-                    # is_argument_list.append([segment, sent])
-                    result = opinion_analyzer.categorize_argument(
-                        topic_text=segment, text_sample=sent, method=args.method
-                    )
-                    stance = adjust_labels(
-                        label=result["label"],
-                        score=result["score"],
-                        threshold=opinion_analyzer.stance_class_threshold,
-                    )
+        if args.rewrite:
+            topic_text_expended_context = prepare_documents(
+                text=topic_text,
+                method="llm",
+                client_handler=opinion_analyzer,
+            )
 
-                    # Extracting the reasoning for the argument
-                    reason = opinion_analyzer.generate(
-                        prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
-                            # topic=segment,
-                            claim=sent,
-                            # stance=stance,
-                            context=argument_text_contexts[idx],
-                        )
-                    )
+            topic_text_segmented_rw = topic_text_expended_context[
+                "new_sentence"
+            ].tolist()
+            topic_text_segmented = topic_text_expended_context[
+                "original_sentence"
+            ].tolist()
 
-                    try:
-                        reason = literal_eval(reason)
-                    except SyntaxError as se:
-                        print(f"SyntaxError: {se}")
-                        reason = {"reasoning_segment": "", "reasoning": ""}
+            if args.collection_name is None:
+                argument_text_expended_context = prepare_documents(
+                    text=config["paths"]["data"]
+                    / "referendums"
+                    / args.business_id
+                    / args.file,
+                    method="llm",
+                    client_handler=opinion_analyzer,
+                )
 
-                    # Extracting the person of the argument
-                    person_info = {"person": "", "party": "", "canton": ""}
-                    if stance in ["pro", "contra"]:
-                        person_info = opinion_analyzer.generate(
-                            prompt=prompt_dict[
-                                config["prompts"]["extract_person"]
-                            ].format(
-                                # topic=segment,
-                                sentence=sent,
-                                # stance=stance,
-                                context=argument_text_contexts[idx],
-                            )
-                        )
+                argument_text_segmented_rw = argument_text_expended_context[
+                    "new_sentence"
+                ].tolist()
+                argument_text_segmented = argument_text_expended_context[
+                    "original_sentence"
+                ].tolist()
+                argument_text_contexts = argument_text_expended_context[
+                    "context"
+                ].tolist()
 
-                        try:
-                            person_info = literal_eval(person_info)
-                        except SyntaxError as se:
-                            print(f"SyntaxError: {se}")
+                argument_text_segmented_emb = sent_model.encode(
+                    argument_text_segmented_rw
+                )
+            else:
+                all_documents = collection.get(
+                    include=["documents", "metadatas", "embeddings"],
+                    limit=10000,
+                    offset=0,
+                )
 
-                    entry = {
-                        "topic_original": topic_text_segmented[segment_idx],
-                        "topic_rewritten": segment,
-                        "argument_rewritten": sent,
-                        "argument_original": argument_text_segmented[idx],
-                        "argument_reason": result["model_generation"],
-                        "person": person_info["person"],
-                        "party": person_info["party"],
-                        "canton": person_info["canton"],
-                        "context": argument_text_contexts[idx],
-                        "label": stance,
-                        "score": result["score"],
-                        "reasoning": reason["reasoning"],
-                        "reasoning_segment": reason["reasoning_segment"],
-                        "similarity": [
-                            x for x in results_semantic_search if x["corpus_id"] == idx
-                        ][0]["score"],
+                # Prepare data for JSON output
+                output_data = [
+                    {
+                        "id": doc_id,
+                        "text": doc_text,
+                        "metadatas": metadata,
+                        "embedding": (
+                            embedding.tolist() if embedding is not None else None
+                        ),  # Convert numpy array to list for JSON compatibility
                     }
-                    print(entry)
-                    results.append(entry)
-                    pprint(entry)
+                    for doc_id, doc_text, metadata, embedding in zip(
+                        all_documents["ids"],
+                        all_documents["documents"],
+                        all_documents["metadatas"],
+                        all_documents["embeddings"],
+                    )
+                ]
 
-    results = pd.DataFrame(results)
-    results = results.applymap(escape_xlsx_string)
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    if args.timestamp is not None:
-        timestamp = args.timestamp
-    output_dir = Path("argument_mining_results") / timestamp
-    os.makedirs(output_dir, exist_ok=True)
-    if args.method == "finetuned":
-        model_name = Path(
-            opinion_analyzer.stance_classifier.model.name_or_path
-        ).name.replace("/", "_")
-    else:
-        model_name = args.model_name_or_path.replace("/", "_")
-    results.to_excel(
-        output_dir
-        / f"argument_analysis__business_id_{args.business_id}__{args.file}__{model_name}.xlsx",
-        index=False,
-    )
+                argument_text_segmented_rw = [doc["text"] for doc in output_data]
+                argument_text_segmented = [
+                    doc["metadatas"]["original_sentence"] for doc in output_data
+                ]
+                argument_text_contexts = [
+                    doc["metadatas"]["context"] for doc in output_data
+                ]
+                argument_text_segmented_emb = torch.tensor(
+                    [doc["embedding"] for doc in output_data]
+                )
+
+        for segment_idx, segment in enumerate(topic_text_segmented_rw):
+            segment_emb = sent_model.encode(segment)
+            print("Extracting the arguments for the following topic:\n")
+            print(segment)
+            print("--------")
+            results_semantic_search = util.semantic_search(
+                segment_emb, argument_text_segmented_emb
+            )[0]
+            results_semantic_search = [
+                x
+                for x in results_semantic_search
+                if x["score"] > config["thresholds"]["sentence_similarity"]
+            ]
+            for idx, sent in enumerate(argument_text_segmented_rw):
+                if len(sent) > 10:
+                    if idx in [x["corpus_id"] for x in results_semantic_search]:
+                        debatable = "ja"
+                        if args.debatability_check:
+                            debatable = (
+                                opinion_analyzer.is_debatable(sent).lower().strip()
+                                == "ja"
+                            )
+                        if debatable == "ja":
+                            result = opinion_analyzer.categorize_argument(
+                                topic_text=segment, text_sample=sent, method=args.method
+                            )
+                            stance = adjust_labels(
+                                label=result["label"],
+                                score=result["score"],
+                                threshold=opinion_analyzer.stance_class_threshold,
+                            )
+
+                            # Extracting the reasoning for the argument
+                            reason = opinion_analyzer.generate(
+                                prompt=prompt_dict[
+                                    config["prompts"]["find_reasoning"]
+                                ].format(
+                                    # topic=segment,
+                                    claim=sent,
+                                    stance=stance,
+                                    context=argument_text_contexts[idx],
+                                )
+                            )
+
+                            try:
+                                reason = literal_eval(reason)
+                            except SyntaxError as se:
+                                print(f"SyntaxError: {se}")
+                                reason = {"reasoning_segment": "", "reasoning": ""}
+
+                            # Extracting the person of the argument
+                            person_info = {"person": "", "party": "", "canton": ""}
+                            if stance in ["pro", "contra"]:
+                                person_info = opinion_analyzer.generate(
+                                    prompt=prompt_dict[
+                                        config["prompts"]["extract_person"]
+                                    ].format(
+                                        # topic=segment,
+                                        sentence=sent,
+                                        # stance=stance,
+                                        context=argument_text_contexts[idx],
+                                    )
+                                )
+
+                                try:
+                                    person_info = literal_eval(person_info)
+                                except SyntaxError as se:
+                                    print(f"SyntaxError: {se}")
+
+                            entry = {
+                                "topic_original": topic_text_segmented[segment_idx],
+                                "topic_rewritten": segment,
+                                "argument_rewritten": sent,
+                                "argument_original": argument_text_segmented[idx],
+                                "argument_reason": result["model_generation"],
+                                "person": person_info["person"],
+                                "party": person_info["party"],
+                                "canton": person_info["canton"],
+                                "context": argument_text_contexts[idx],
+                                "label": stance,
+                                "score": result["score"],
+                                "reasoning": reason["reasoning"],
+                                "reasoning_segment": reason["reasoning_segment"],
+                                "similarity": [
+                                    x
+                                    for x in results_semantic_search
+                                    if x["corpus_id"] == idx
+                                ][0]["score"],
+                            }
+                            print(entry)
+                            results.append(entry)
+                            pprint(entry)
+
+        results = pd.DataFrame(results)
+        results = results.applymap(escape_xlsx_string)
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        if args.timestamp is not None:
+            timestamp = args.timestamp
+        output_dir = Path("argument_mining_results") / timestamp
+        os.makedirs(output_dir, exist_ok=True)
+        if args.method == "finetuned":
+            model_name = Path(
+                opinion_analyzer.stance_classifier.model.name_or_path
+            ).name.replace("/", "_")
+        else:
+            model_name = args.model_name_or_path.replace("/", "_")
+        results.to_excel(
+            output_dir
+            / f"argument_analysis__business_id_{args.business_id}__{args.file}__{model_name}.xlsx",
+            index=False,
+        )

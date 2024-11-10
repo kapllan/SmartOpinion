@@ -17,6 +17,7 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
+from bs4 import BeautifulSoup
 from transformers import EvalPrediction
 import fitz
 
@@ -278,13 +279,17 @@ def make_sentences_concrete(
     contexts = []
     for n, sent in enumerate(text.sents):
         if sent.text in ambiguous_sentences or check_ambiguity:
-            # ambiguous_words = find_ambiguous_words(sent)
+            ambiguous_words = ", ".join(find_ambiguous_words(sent))
             if method == "llm":
-                context = " ".join(all_sentences[n - 5 : n + 5])
-                prompt = expand_sentence.format(sentence=sent.text, context=context)
+                context = " ".join(all_sentences[n - 10 : n + 10])
+                prompt = expand_sentence.format(
+                    sentence=sent.text, context=context, ambiguous_words=ambiguous_words
+                )
                 new_sentence = client_handler.generate(prompt)
             elif method == "context":
-                new_sentence = " ".join(all_sentences[n - 1 : n + 1])
+                new_sentence = " ".join(all_sentences[n - 2 : n + 2])
+            elif method is None:
+                new_sentence = sent.text
             else:
                 raise f"No method {method} available. Choose between 'llm' or 'context'."
             new_sentences.append(new_sentence)

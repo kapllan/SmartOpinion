@@ -208,27 +208,17 @@ is_debatable = """Du bist ein Experte in Sachen Argumentanalyse.
                 # Der Textauszug lautet: {text}           
             """
 
-expand_sentence = """
-                    Du bist ein Kommunikatonsexperte.
-                    Ich gebe dir einen Satz. Der Satz hat folgende Wörter, die ambig sind: {ambiguous_words}.
-                    Anschließend gebe ich dir einen Textauszug, der den Kontext darstellt, in dem der Satz vorkommt.
-                    Setze anstelle der ambigen Wörter Umschreibungen basierend auf den Kontext ein, damit man den Satz in Isolation besser versteht.
-                    Wichtig: Gib nur den reformulierten Satz zurück und sag sonst nichts weiter!
-                    
-                    # Hier ist der Satz:
-                    {sentence}
-                    
-                    # Hier ist der Kontext:
-                    {context}
-                    
-                    # Der neue Satz lautet:
-                    
-                    """
 
 make_sentence_concrete = """
                     Du bist ein Kommunikatonsexperte.
                     Ich gebe dir einen Satz und einen Kontext, in dem der Satz vorkommt.
                     Schreibe den Satz so um, dass er auch ohne den Kontext zu verstehen ist.
+                    Achte dabei, dass du wirklich für alle Begriffe oder Phrasen, die man nicht durch Allgemeinwissen kennt, 
+                    eine kurze Erklärung oder Umschreibung beifügst. 
+                    Beispielsweise, wenn über ein Gesetz gesprochen wird, schau im Kontext nach, was genau mit dem Gesetz gemeint ist.
+                    Weitere Wörter, die man definitiv erklären muss, sind: Pronomen, {ambiguous_words}.  
+                    Wenn der Kontext keine Erklärung hergibt, muss du diese Begriffe nicht umschreiben.
+                    Du darfst also nichts hinzudichten.
                     
                     Wichtig: Gib nur den reformulierten Satz zurück und sag sonst nichts weiter!
 
@@ -242,6 +232,46 @@ make_sentence_concrete = """
 
                     """
 
+make_sentence_concrete_1 = """
+                    Du bist ein Kommunikatonsexperte.
+                    Ich gebe dir einen Satz und einen Kontext, in dem der Satz vorkommt.
+                    Schreibe den Satz so um, dass er auch ohne den Kontext zu verstehen ist.
+                    Achte dabei, dass du wirklich für alle Begriffe oder Phrasen, die man nicht durch Allgemeinwissen kennt, 
+                    eine kurze Erklärung oder Umschreibung beifügst. 
+                    Beispielsweise, wenn über ein Gesetz gesprochen wird, schau im Kontext nach, was genau mit dem Gesetz gemeint ist.
+                    Weitere Wörter, die man definitiv erklären muss, sind: Pronomen, {ambiguous_words}.  
+                    Wenn der Kontext keine Erklärung hergibt, muss du diese Begriffe nicht umschreiben.
+                    Du darfst also nichts hinzudichten.
+                    Deine Umschreibung darf aber ruhig mehrere Sätze umfassen.
+                    
+                    Wichtig: Gib nur den reformulierten Satz zurück und sag sonst nichts weiter!
+
+                    # Hier ist der Satz:
+                    {sentence}
+
+                    # Hier ist der Kontext:
+                    {context}
+
+                    # Der neue Satz lautet:
+
+                    """
+
+make_sentence_concrete_2 = """
+                    Du bist ein Kommunikatonsexperte.
+                    Ich gebe dir einen Satz. Der Satz hat folgende Wörter, die ambig sind: {ambiguous_words}.
+                    Anschließend gebe ich dir einen Textauszug, der den Kontext darstellt, in dem der Satz vorkommt.
+                    Setze anstelle der ambigen Wörter Umschreibungen basierend auf den Kontext ein, damit man den Satz in Isolation besser versteht.
+                    Wichtig: Gib nur den reformulierten Satz zurück und sag sonst nichts weiter!
+
+                    # Hier ist der Satz:
+                    {sentence}
+
+                    # Hier ist der Kontext:
+                    {context}
+
+                    # Der neue Satz lautet:
+
+                    """
 find_main_points = """
                     Du bist ein Experte in Sachen Textanalyse.
                     Ich gebe dir einen Textauszug.
@@ -329,8 +359,9 @@ prompt_dict = {
     "categorize_argument_few_shot": categorize_argument_few_shot,
     "categorize_argument_zero_shot_cot": categorize_argument_zero_shot_cot,
     "is_argument": is_argument,
-    "expand_sentence": expand_sentence,
     "make_sentence_concrete": make_sentence_concrete,
+    "make_sentence_concrete_1": make_sentence_concrete_1,
+    "make_sentence_concrete_2": make_sentence_concrete_2,
     "find_main_points": find_main_points,
     "is_debatable": is_debatable,
     "find_reasoning": find_reasoning,

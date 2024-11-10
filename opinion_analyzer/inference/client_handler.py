@@ -26,6 +26,8 @@ log = get_logger()
 class ClientHandler:  # pylint: disable=too-many-instance-attributes
     """Uses either the vLLM API or the transformers pipeline to generate text based on a prompt."""
 
+    torch.manual_seed(42)
+
     def __init__(self, model_name_or_path: str = None, tokenizer_model: str = None):
         # pylint: disable=too-many-arguments
         self.processor = None
