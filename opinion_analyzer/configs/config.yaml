@@ -1,6 +1,6 @@
 models:
   sentence_similarity: intfloat/multilingual-e5-large #PM-AI/bi-encoder_msmarco_bert-base_german
-  llm: VAGOsolutions/Llama-3.1-SauerkrautLM-70b-Instruct #VAGOsolutions/Llama-3.1-SauerkrautLM-70b-Instruct
+  llm: VAGOsolutions/Llama-3.1-SauerkrautLM-8b-Instruct
   stance_classifier: ../models/deepset_gbert-large_stance_classifier
 paths:
   logs: ../logs
@@ -19,4 +19,5 @@ thresholds:
     sentence_similarity: 0.5
 database:
   chromadb: smart_opinion_default_collection
+
 
