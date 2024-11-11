@@ -358,6 +358,7 @@ class OpinionAnalyzer(ClientHandler):
                     "reasoning": reason["reasoning"],
                     "reasoning_segment": reason["reasoning_segment"],
                     "similarity": argument_entry["similarity"],
+                    "model_name": self.model_name_or_path,
                 }
 
                 yield entry
