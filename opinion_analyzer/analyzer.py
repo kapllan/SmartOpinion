@@ -13,6 +13,7 @@ import spacy
 from bs4 import BeautifulSoup
 from humanfriendly.terminal import output
 from sentence_transformers import SentenceTransformer, util
+from spacy.lang.ja.syntax_iterators import labels
 from transformers import pipeline
 import chromadb
 from chromadb.utils import embedding_functions
@@ -85,9 +86,18 @@ class OpinionAnalyzer(ClientHandler):
 
     stance_class_threshold = 0.9
 
-    def __init__(self, model_name_or_path):
+    def __init__(
+        self,
+        model_name_or_path: str = None,
+        tokenizer_model: str = None,
+        model_client: Literal["together", "openai"] = None,
+    ):
         # Call the parent class's __init__ method
-        super().__init__(model_name_or_path)
+        super().__init__(
+            model_name_or_path=model_name_or_path,
+            tokenizer_model=tokenizer_model,
+            model_client=model_client,
+        )
 
         self.stance_classifier = pipeline(
             "text-classification", model=config["models"]["stance_classifier"]
@@ -291,64 +301,68 @@ class OpinionAnalyzer(ClientHandler):
                     text_sample=argument_entry["new_sentence"],
                     method="llm",
                 )
+
                 stance = adjust_labels(
                     label=result["label"],
                     score=result["score"],
                     threshold=self.stance_class_threshold,
                 )
-
-                # Extracting the reasoning for the argument
-                reason = self.generate(
-                    prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
-                        # topic=segment,
-                        claim=argument_entry["new_sentence"],
-                        stance=stance,
-                        context=argument_entry["context"],
-                    )
-                )
-
-                try:
-                    reason = literal_eval(reason)
-                except SyntaxError as se:
-                    print(f"SyntaxError: {se}")
-                    reason = {"reasoning_segment": "", "reasoning": ""}
-
-                # Extracting the person of the argument
-                person_info = {"person": "", "party": "", "canton": ""}
                 if stance in ["pro", "contra"]:
-                    person_info = self.generate(
-                        prompt=prompt_dict[config["prompts"]["extract_person"]].format(
+
+                    # Extracting the reasoning for the argument
+                    reason = self.generate(
+                        prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
                             # topic=segment,
-                            sentence=argument_entry["original_sentence"],
-                            # stance=stance,
+                            claim=argument_entry["new_sentence"],
+                            stance=stance,
                             context=argument_entry["context"],
                         )
                     )
 
                     try:
-                        person_info = literal_eval(person_info)
+                        reason = literal_eval(reason)
                     except SyntaxError as se:
                         print(f"SyntaxError: {se}")
-                        person_info = {"person": "", "party": "", "canton": ""}
+                        reason = {"reasoning_segment": "", "reasoning": ""}
 
-                entry = {
-                    "topic_original": topic_entry["original_sentence"],
-                    "topic_rewritten": topic_entry["new_sentence"],
-                    "argument_rewritten": argument_entry["new_sentence"],
-                    "argument_original": argument_entry["original_sentence"],
-                    "argument_reason": result["model_generation"],
-                    "person": person_info["person"],
-                    "party": person_info["party"],
-                    "canton": person_info["canton"],
-                    "context": argument_entry["context"],
-                    "label": stance,
-                    "score": result["score"],
-                    "reasoning": reason["reasoning"],
-                    "reasoning_segment": reason["reasoning_segment"],
-                    "similarity": argument_entry["similarity"],
-                }
+                    # Extracting the person of the argument
+                    person_info = {"person": "", "party": "", "canton": ""}
+                    if stance in ["pro", "contra"]:
+                        person_info = self.generate(
+                            prompt=prompt_dict[
+                                config["prompts"]["extract_person"]
+                            ].format(
+                                # topic=segment,
+                                sentence=argument_entry["original_sentence"],
+                                # stance=stance,
+                                context=argument_entry["context"],
+                            )
+                        )
 
-                yield entry
+                        try:
+                            person_info = literal_eval(person_info)
+                        except SyntaxError as se:
+                            print(f"SyntaxError: {se}")
+                            person_info = {"person": "", "party": "", "canton": ""}
+
+                    entry = {
+                        "topic_original": topic_entry["original_sentence"],
+                        "topic_rewritten": topic_entry["new_sentence"],
+                        "argument_rewritten": argument_entry["new_sentence"],
+                        "argument_original": argument_entry["original_sentence"],
+                        "argument_reason": result["model_generation"],
+                        "person": person_info["person"],
+                        "party": person_info["party"],
+                        "canton": person_info["canton"],
+                        "context": argument_entry["context"],
+                        "label": stance,
+                        "score": result["score"],
+                        "reasoning": reason["reasoning"],
+                        "reasoning_segment": reason["reasoning_segment"],
+                        "similarity": argument_entry["similarity"],
+                    }
+
+                    yield entry
 
 
 if __name__ == "__main__":

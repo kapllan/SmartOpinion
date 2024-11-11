@@ -8,7 +8,9 @@ import time
 # Get configuration
 config = get_main_config()
 pprint(config)
-opinion_analyzer = OpinionAnalyzer(config["models"]["llm"])
+opinion_analyzer = OpinionAnalyzer(
+    model_name_or_path=config["models"]["llm"], model_client="together"
+)
 
 
 # Function to perform argument mining and yield results incrementally
@@ -28,7 +30,9 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
     # Initialize an empty DataFrame to accumulate results
     accumulated_df = pd.DataFrame(columns=columns)
     # Simulate finding arguments incrementally for the sake of demonstration
-    arguments = opinion_analyzer.find_arguments(input_text, similarity_threshold)
+    arguments = opinion_analyzer.find_arguments(
+        topic_text=input_text, similarity_threshold=similarity_threshold
+    )
     # For this example, simulate processing each argument one by one
     for row in arguments:
         current_row_df = pd.DataFrame([row])[columns]

@@ -1,6 +1,7 @@
 """ ClientHandler class for text generation using vLLM (offline) or transformers pipeline. """
 
 import traceback
+from typing import Literal
 import argparse
 import transformers
 import torch
@@ -8,7 +9,8 @@ from transformers import AutoModelForCausalLM, AutoModel, AutoTokenizer
 from transformers import AutoProcessor
 from vllm import LLM, SamplingParams
 from PIL import Image
-
+import os
+from together import Together
 from opinion_analyzer.data_handler.prompt_templates import template_dict
 from opinion_analyzer.data_handler.prompt_database import is_argument
 from opinion_analyzer.utils.helper import (
@@ -28,21 +30,31 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
 
     torch.manual_seed(42)
 
-    def __init__(self, model_name_or_path: str = None, tokenizer_model: str = None):
+    def __init__(
+        self,
+        model_name_or_path: str,
+        tokenizer_model: str = None,
+        model_client: Literal["together", "openai"] = None,
+    ):
         # pylint: disable=too-many-arguments
+
         self.processor = None
         self.model = None
         self.model_config = None
         self.bnb_config = None
         self.tokenizer = None
         self.model_name_or_path = model_name_or_path
-        if self.model_name_or_path is not None:
-            if tokenizer_model is None:
-                self.tokenizer_model = model_name_or_path
-            else:
-                self.tokenizer_model = tokenizer_model
-            self.pipeline = self.get_text_gen_pipeline()
+
+        if tokenizer_model is None:
+            self.tokenizer_model = model_name_or_path
+        else:
+            self.tokenizer_model = tokenizer_model
+        if model_client is None:
             self.model_client = model_client_config[self.model_name_or_path]["client"]
+        else:
+            self.model_client = model_client
+
+        self.pipeline = self.get_text_gen_pipeline()
 
     def find_config(self):
         """
@@ -143,6 +155,10 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
 
         :return: Text generation pipeline or None.
         """
+
+        if self.model_client == "together":
+            return self.get_together_api()
+
         if model_client_config[self.model_name_or_path]["client"] == "transformers":
             return self.get_transformers_pipeline()
 
@@ -164,6 +180,9 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
 
         return output
 
+    def get_together_api(self):
+        return Together(api_key=os.environ.get("TOGETHER_API_KEY"))
+
     def rename_params(self, params: dict) -> dict:
         """
         Renames certain hyperparameters so that they can be read by the active text generation pipeline.
@@ -171,13 +190,15 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
         :param: Hyperparameters as dictionary to teak text generation.
         """
 
-        if model_client_config[self.model_name_or_path]["client"] in [
-            "transformers",
-            "vi",
-        ]:
-            if "max_tokens" in params.keys():
-                params["max_new_tokens"] = params["max_tokens"]
-                del params["max_tokens"]
+        if self.model_name_or_path in model_client_config.keys():
+            if model_client_config[self.model_name_or_path]["client"] in [
+                "transformers",
+                "vi",
+            ]:
+                if "max_tokens" in params.keys():
+                    params["max_new_tokens"] = params["max_tokens"]
+                    del params["max_tokens"]
+
         return params
 
     def generate_vi(
@@ -256,6 +277,14 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
 
         raise ValueError("No valid text generation pipeline found.")
 
+    def generate_together(self, prompt: str, params: dict = None):
+        response = self.pipeline.chat.completions.create(
+            model=self.model_name_or_path,
+            messages=[{"role": "user", "content": prompt}],
+            **params,
+        )
+        return response.choices[0].message.content
+
     def generate(
         self, prompt: str, params: dict = None, img: Image.Image = None
     ) -> str:
@@ -268,6 +297,9 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
         """
         params = params or model_client_config["default_hyperparams"]
         params = self.rename_params(params)
+
+        if self.model_client == "together":
+            return self.generate_together(prompt=prompt, params=params)
 
         if model_client_config[self.model_name_or_path]["template"] is not None:
             prompt = template_dict[
