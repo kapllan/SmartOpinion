@@ -11,6 +11,7 @@ from ast import literal_eval
 import pandas as pd
 import spacy
 from bs4 import BeautifulSoup
+from humanfriendly.terminal import output
 from sentence_transformers import SentenceTransformer, util
 from transformers import pipeline
 import chromadb
@@ -215,146 +216,140 @@ class OpinionAnalyzer(ClientHandler):
 
         return self.generate(prompt=prompt)
 
-    def find_arguments(self, topic_text: str, rewrite=True) -> list[dict]:
+    def convert_to_sub_dicts(self, data_dict):
+        """
+        Convert the given dictionary to a list of sub-dictionaries.
+
+        Args:
+            data_dict (dict): The input dictionary containing lists of data.
+
+        Returns:
+            list: A list of sub-dictionaries with 'id', 'document', 'metadata', and 'distance'.
+        """
+        # Extracting lists from the dictionary
+        ids = data_dict["ids"][0]
+        documents = data_dict["documents"][0]
+        metadatas = data_dict["metadatas"][0]
+        distances = data_dict["distances"][0]
+
+        # Creating a list of sub-dictionaries
+        sub_dicts = [
+            {"id": id_, "document": doc, "metadata": meta, "distance": dist}
+            for id_, doc, meta, dist in zip(ids, documents, metadatas, distances)
+        ]
+
+        return sub_dicts
+
+    def find_matches(self, query: str, similarity_threshold) -> list[dict]:
+        matches = self.collection.query(query_texts=[query], n_results=1000)
+        matches = self.convert_to_sub_dicts(matches)
+        matches = [m for m in matches if 1 - m["distance"] >= similarity_threshold]
+        return matches
+
+    def prepare_argument_text(self, query: str, similarity_threshold: float = None):
+
+        matches = self.find_matches(
+            query=query, similarity_threshold=similarity_threshold
+        )
+
         results = []
+
+        for doc in matches:
+            results.append(
+                {
+                    "new_sentence": doc["document"],
+                    "original_sentence": doc["metadata"]["original_sentence"],
+                    "context": doc["metadata"]["context"],
+                    "similarity": round(1 - doc["distance"], 2),
+                }
+            )
+
+        return results
+
+    def find_arguments(
+        self, topic_text: str, rewrite=True, similarity_threshold: float = None
+    ) -> list[dict]:
 
         if rewrite:
             print("Rewriting topic")
-            topic_text_expended_context = prepare_documents(
+            topic_text_prepared = prepare_documents(
                 text=topic_text,
                 method="llm",
                 client_handler=super(),
             )
 
-            topic_text_segmented_rw = topic_text_expended_context[
-                "new_sentence"
-            ].tolist()
-            topic_text_segmented = topic_text_expended_context[
-                "original_sentence"
-            ].tolist()
-
-            all_documents = self.collection.get(
-                include=["documents", "metadatas", "embeddings"],
-                limit=10000,
-                offset=0,
+        for topic_entry in topic_text_prepared.to_dict(orient="records"):
+            results_semantic_search = self.prepare_argument_text(
+                query=topic_entry["new_sentence"],
+                similarity_threshold=similarity_threshold,
             )
 
-            # Prepare data for JSON output
-            output_data = [
-                {
-                    "id": doc_id,
-                    "text": doc_text,
-                    "metadatas": metadata,
-                    "embedding": (
-                        embedding.tolist() if embedding is not None else None
-                    ),  # Convert numpy array to list for JSON compatibility
-                }
-                for doc_id, doc_text, metadata, embedding in zip(
-                    all_documents["ids"],
-                    all_documents["documents"],
-                    all_documents["metadatas"],
-                    all_documents["embeddings"],
+            for argument_entry in results_semantic_search:
+
+                result = self.categorize_argument(
+                    topic_text=topic_entry["new_sentence"],
+                    text_sample=argument_entry["new_sentence"],
+                    method="llm",
                 )
-            ]
+                stance = adjust_labels(
+                    label=result["label"],
+                    score=result["score"],
+                    threshold=self.stance_class_threshold,
+                )
 
-            argument_text_segmented_rw = [doc["text"] for doc in output_data]
-            argument_text_segmented = [
-                doc["metadatas"]["original_sentence"] for doc in output_data
-            ]
-            argument_text_contexts = [
-                doc["metadatas"]["context"] for doc in output_data
-            ]
-            argument_text_segmented_emb = torch.tensor(
-                [doc["embedding"] for doc in output_data]
-            )
+                # Extracting the reasoning for the argument
+                reason = self.generate(
+                    prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
+                        # topic=segment,
+                        claim=argument_entry["new_sentence"],
+                        stance=stance,
+                        context=argument_entry["context"],
+                    )
+                )
 
-        for segment_idx, segment in enumerate(topic_text_segmented_rw):
-            segment_emb = self.sent_model.encode(segment)
-            print("Extracting the arguments for the following topic:\n")
-            print(segment)
-            print("--------")
-            results_semantic_search = util.semantic_search(
-                segment_emb, argument_text_segmented_emb
-            )[0]
-            results_semantic_search = [
-                x
-                for x in results_semantic_search
-                if x["score"] > config["thresholds"]["sentence_similarity"]
-            ]
-            for idx, sent in enumerate(argument_text_segmented_rw):
-                print(sent)
-                if len(sent) > 10:
-                    if idx in [x["corpus_id"] for x in results_semantic_search]:
-                        result = self.categorize_argument(
-                            topic_text=segment, text_sample=sent, method="llm"
+                try:
+                    reason = literal_eval(reason)
+                except SyntaxError as se:
+                    print(f"SyntaxError: {se}")
+                    reason = {"reasoning_segment": "", "reasoning": ""}
+
+                # Extracting the person of the argument
+                person_info = {"person": "", "party": "", "canton": ""}
+                if stance in ["pro", "contra"]:
+                    person_info = self.generate(
+                        prompt=prompt_dict[config["prompts"]["extract_person"]].format(
+                            # topic=segment,
+                            sentence=argument_entry["original_sentence"],
+                            # stance=stance,
+                            context=argument_entry["context"],
                         )
-                        stance = adjust_labels(
-                            label=result["label"],
-                            score=result["score"],
-                            threshold=self.stance_class_threshold,
-                        )
+                    )
 
-                        # Extracting the reasoning for the argument
-                        reason = self.generate(
-                            prompt=prompt_dict[
-                                config["prompts"]["find_reasoning"]
-                            ].format(
-                                # topic=segment,
-                                claim=sent,
-                                stance=stance,
-                                context=argument_text_contexts[idx],
-                            )
-                        )
-
-                        try:
-                            reason = literal_eval(reason)
-                        except SyntaxError as se:
-                            print(f"SyntaxError: {se}")
-                            reason = {"reasoning_segment": "", "reasoning": ""}
-
-                        # Extracting the person of the argument
+                    try:
+                        person_info = literal_eval(person_info)
+                    except SyntaxError as se:
+                        print(f"SyntaxError: {se}")
                         person_info = {"person": "", "party": "", "canton": ""}
-                        if stance in ["pro", "contra"]:
-                            person_info = self.generate(
-                                prompt=prompt_dict[
-                                    config["prompts"]["extract_person"]
-                                ].format(
-                                    # topic=segment,
-                                    sentence=sent,
-                                    # stance=stance,
-                                    context=argument_text_contexts[idx],
-                                )
-                            )
 
-                            try:
-                                person_info = literal_eval(person_info)
-                            except SyntaxError as se:
-                                print(f"SyntaxError: {se}")
-                                person_info = {"person": "", "party": "", "canton": ""}
+                entry = {
+                    "topic_original": topic_entry["original_sentence"],
+                    "topic_rewritten": topic_entry["new_sentence"],
+                    "argument_rewritten": argument_entry["new_sentence"],
+                    "argument_original": argument_entry["original_sentence"],
+                    "argument_reason": result["model_generation"],
+                    "person": person_info["person"],
+                    "party": person_info["party"],
+                    "canton": person_info["canton"],
+                    "context": argument_entry["context"],
+                    "label": stance,
+                    "score": result["score"],
+                    "reasoning": reason["reasoning"],
+                    "reasoning_segment": reason["reasoning_segment"],
+                    "similarity": argument_entry["similarity"],
+                }
 
-                        entry = {
-                            "topic_original": topic_text_segmented[segment_idx],
-                            "topic_rewritten": segment,
-                            "argument_rewritten": sent,
-                            "argument_original": argument_text_segmented[idx],
-                            "argument_reason": result["model_generation"],
-                            "person": person_info["person"],
-                            "party": person_info["party"],
-                            "canton": person_info["canton"],
-                            "context": argument_text_contexts[idx],
-                            "label": stance,
-                            "score": result["score"],
-                            "reasoning": reason["reasoning"],
-                            "reasoning_segment": reason["reasoning_segment"],
-                            "similarity": [
-                                x
-                                for x in results_semantic_search
-                                if x["corpus_id"] == idx
-                            ][0]["score"],
-                        }
+                yield entry
 
-                        yield entry
-        
 
 if __name__ == "__main__":
 
