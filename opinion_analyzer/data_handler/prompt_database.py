@@ -238,8 +238,10 @@ make_sentence_concrete_1 = """
                     Schreibe den Satz so um, dass er auch ohne den Kontext zu verstehen ist.
                     Achte dabei, dass du wirklich für alle Begriffe oder Phrasen, die man nicht durch Allgemeinwissen kennt, 
                     eine kurze Erklärung oder Umschreibung beifügst. 
-                    Beispielsweise, wenn über ein Gesetz gesprochen wird, schau im Kontext nach, was genau mit dem Gesetz gemeint ist.
-                    Weitere Wörter, die man definitiv erklären muss, sind: Pronomen, {ambiguous_words}.  
+                    Beispielsweise, wenn irgendwo von 'Gesetz', 'Gesetzesänderung', 'Bestimmung', 'Versammlung' etc. gesprochen wird, 
+                    schau im Kontext nach, was genau damit gemeint ist und füge zusätzliche Beschreibungen hinzu,
+                    damit der Leser auch versteht, was genau damit gemeint ist.
+                    Weitere Wörter, die man definitiv disambiguieren muss, sind: Pronomen, {ambiguous_words}.  
                     Wenn der Kontext keine Erklärung hergibt, muss du diese Begriffe nicht umschreiben.
                     Du darfst also nichts hinzudichten.
                     Deine Umschreibung darf aber ruhig mehrere Sätze umfassen.

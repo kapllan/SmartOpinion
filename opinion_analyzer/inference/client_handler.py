@@ -11,11 +11,14 @@ from vllm import LLM, SamplingParams
 from PIL import Image
 import os
 from together import Together
+from openai import OpenAI
 from opinion_analyzer.data_handler.prompt_templates import template_dict
 from opinion_analyzer.data_handler.prompt_database import is_argument
 from opinion_analyzer.utils.helper import (
     get_model_client_config,
+    find_ambiguous_words,
     make_sentences_concrete,
+    get_main_config,
 )
 from opinion_analyzer.data_handler.prompt_database import prompt_dict
 from opinion_analyzer.utils.log import get_logger
@@ -159,6 +162,9 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
         if self.model_client == "together":
             return self.get_together_api()
 
+        if self.model_client == "openai":
+            return self.get_openai_api()
+
         if model_client_config[self.model_name_or_path]["client"] == "transformers":
             return self.get_transformers_pipeline()
 
@@ -183,6 +189,9 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
     def get_together_api(self):
         return Together(api_key=os.environ.get("TOGETHER_API_KEY"))
 
+    def get_openai_api(self):
+        return OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
     def rename_params(self, params: dict) -> dict:
         """
         Renames certain hyperparameters so that they can be read by the active text generation pipeline.
@@ -198,6 +207,10 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
                 if "max_tokens" in params.keys():
                     params["max_new_tokens"] = params["max_tokens"]
                     del params["max_tokens"]
+
+        if self.model_client == "openai":
+            if "repetition_penalty" in params.keys():
+                del params["repetition_penalty"]
 
         return params
 
@@ -285,6 +298,18 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
         )
         return response.choices[0].message.content
 
+    def generate_openai(self, prompt: str, params: dict = None):
+        completion = self.pipeline.chat.completions.create(
+            model=self.model_name_or_path,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            **params,
+        )
+
+        return completion.choices[0].message.content
+
     def generate(
         self, prompt: str, params: dict = None, img: Image.Image = None
     ) -> str:
@@ -300,7 +325,8 @@ class ClientHandler:  # pylint: disable=too-many-instance-attributes
 
         if self.model_client == "together":
             return self.generate_together(prompt=prompt, params=params)
-
+        if self.model_client == "openai":
+            return self.generate_openai(prompt=prompt, params=params)
         if model_client_config[self.model_name_or_path]["template"] is not None:
             prompt = template_dict[
                 model_client_config[self.model_name_or_path]["template"]
@@ -340,6 +366,8 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    config = get_main_config()
     ch = ClientHandler(args.model_name_or_path)
 
     context = """Per 1. April 2022 haben die Kantone wieder die Hauptverantwortung in der Bewältigung der Covid-19-Epidemie übernommen. Dem Bund sollen aber weiterhin einzelne bewährte Instrumente zum Schutz der öffentlichen Gesundheit zur Verfügung stehen. Der Bundesrat möchte deshalb einzelne Bestimmungen des Covid-19-Gesetzes verlängern, längstens bis Ende Juni 2024.
@@ -350,13 +378,15 @@ Gegen die Gesetzesänderung wurde das Referendum ergriffen."""
 
     sentence = "Dazu gehören die Testkosten."
 
-    prompt = prompt_dict["make_sentence_concrete"].format(
-        sentence=sentence,
-        context=context,
+    answer = make_sentences_concrete(
+        text=context,
+        client_handler=ch,
+        expand_sentence=prompt_dict[config["prompts"]["make_sentence_concrete"]],
+        method="llm",
     )
 
-    answer = ch.generate(prompt)
     print(answer)
+    answer.to_excel("context_situations.xlsx")
 
     # results = make_sentences_concrete(text=context, client_handler=ch)
     # results.to_excel("sentence_rewriting.xlsx", index=False)

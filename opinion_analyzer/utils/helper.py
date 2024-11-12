@@ -281,7 +281,7 @@ def make_sentences_concrete(
         if sent.text in ambiguous_sentences or check_ambiguity:
             ambiguous_words = ", ".join(find_ambiguous_words(sent))
             if method == "llm":
-                context = " ".join(all_sentences[n - 10 : n + 10])
+                context = " ".join(all_sentences[n - 20 : n + 20])
                 prompt = expand_sentence.format(
                     sentence=sent.text, context=context, ambiguous_words=ambiguous_words
                 )

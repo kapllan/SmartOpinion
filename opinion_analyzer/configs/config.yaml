@@ -1,6 +1,6 @@
 models:
   sentence_similarity: intfloat/multilingual-e5-large #PM-AI/bi-encoder_msmarco_bert-base_german
-  llm: meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo #VAGOsolutions/Llama-3.1-SauerkrautLM-8b-Instruct
+  llm: gpt-4o-2024-08-06 # meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo #VAGOsolutions/Llama-3.1-SauerkrautLM-8b-Instruct
   stance_classifier: ../models/deepset_gbert-large_stance_classifier
 paths:
   logs: ../logs
@@ -12,7 +12,7 @@ metrics:
   tr_classification_model: matthews_correlation #f1 ; matthews_correlation
 prompts:
   stance_detection: categorize_argument_zero_shot_cot
-  make_sentence_concrete: make_sentence_concrete
+  make_sentence_concrete: make_sentence_concrete_1
   find_reasoning: find_reasoning
   extract_person: extract_person
 thresholds:

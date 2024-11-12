@@ -28,13 +28,13 @@ from opinion_analyzer.utils.helper import (
     extract_text_from_pdf,
     escape_xlsx_string,
 )
+from opinion_analyzer.utils.log import get_logger
 
 nlp = spacy.load("de_dep_news_trf")
 
 config = get_main_config()
 
-
-# log = get_logger()
+log = get_logger()
 
 
 def prepare_documents(
@@ -323,8 +323,12 @@ class OpinionAnalyzer(ClientHandler):
                     reason = literal_eval(reason)
                 except SyntaxError as se:
                     print(f"SyntaxError: {se}")
+                    log.error(se)
                     reason = {"reasoning_segment": "", "reasoning": ""}
-
+                if "reasoning_segment" not in reason.keys():
+                    log.error("No field 'reasoning_segment' in reasoning output")
+                if "reasoning" not in reason.keys():
+                    log.error("No field 'reasoning' in reasoning output")
                 # Extracting the person of the argument
                 person_info = {"person": "", "party": "", "canton": ""}
                 if stance in ["pro", "contra"]:
@@ -355,8 +359,12 @@ class OpinionAnalyzer(ClientHandler):
                     "context": argument_entry["context"],
                     "label": stance,
                     "score": result["score"],
-                    "reasoning": reason["reasoning"],
-                    "reasoning_segment": reason["reasoning_segment"],
+                    "reasoning": reason["reasoning"] if "reasoning" in reason else "",
+                    "reasoning_segment": (
+                        reason["reasoning_segment"]
+                        if "reasoning_segment" in reason
+                        else ""
+                    ),
                     "similarity": argument_entry["similarity"],
                     "model_name": self.model_name_or_path,
                 }

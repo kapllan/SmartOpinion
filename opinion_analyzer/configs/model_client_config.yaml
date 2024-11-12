@@ -31,6 +31,18 @@ openbmb/MiniCPM-Llama3-V-2_5: # TODO: This model does not generate the same outp
 microsoft/Phi-3-vision-128k-instruct: # Stands for visual instruction or multimodal models.
   client: vi
   template: null
+meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo:
+  client: together
+  template: null
+meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo:
+  client: together
+  template: null
+mistralai/Mixtral-8x7B-Instruct-v0.1:
+  client: together
+  template: null
+gpt-4o-2024-08-06:
+  client: openai
+  template: null
 default_hyperparams:
   max_tokens: 4096
   temperature: 0.0
