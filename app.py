@@ -15,10 +15,10 @@ LOGIN_CREDENTIALS = [
 
 # Get configuration
 config = get_main_config()
+
 MODELS = [
-    "microsoft/Phi-3-mini-128k-instruct",
-    "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
     "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+    "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
     "gpt-4o-2024-08-06",
 ]
@@ -32,10 +32,10 @@ cancel_status = {"cancel": False}
 COLUMN_RENAMING = {
     "topic_original": "Worum geht es?",
     "label": "Haltung",
-    "argument_original": "Ansicht",
-    "argument_reason": "Modellbegründung",
-    "reasoning": "Beweis",
-    "reasoning_segment": "Abschnitt mit Beweis",
+    "argument_reason": "Modellbegründung für gewählte Haltung",
+    "argument_original": "Meinung",
+    # "reasoning": "Begründung für die Meinung",
+    "reasoning_segment": "Begründung für die Meinung",
     "person": "Person",
     "party": "Partei",
     "canton": "Kanton",
@@ -43,26 +43,29 @@ COLUMN_RENAMING = {
     "model_name": "LLM",
 }
 
-"""key_value_pairs = [(k, v) for k, v in COLUMN_RENAMING.items()]
-for k, v in key_value_pairs:
-    COLUMN_RENAMING[k] = "\n".join(v.split())"""
 
-
-def prepare_pipeline(model_name_or_path):
+def prepare_pipeline(model_name_or_path, selected_columns):
     """
     Initializes the OpinionAnalyzer and updates the model used for analysis.
     Parameters:
     model_name_or_path (str): The name or path of the model to be used for opinion analysis.
+    selected_columns (list): List of selected columns to display in the DataFrame.
     Side Effects:
     - Updates the global 'analyzer_dict' with a new instance of OpinionAnalyzer.
+    - Updates the global 'selected_columns'.
     - Prints a message indicating the change of the model.
     """
+    global COLUMN_RENAMING
+    COLUMN_RENAMING = {
+        k: v for k, v in COLUMN_RENAMING.items() if v in selected_columns
+    }
     analyzer_dict["opinion_analyzer"] = OpinionAnalyzer(
         model_name_or_path=model_name_or_path
     )
     print(
         "Changing the model to: ", analyzer_dict["opinion_analyzer"].model_name_or_path
     )
+    print("Displaying columns: ", selected_columns)
 
 
 def rename_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -86,7 +89,7 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
     Parameters:
     - input_text (str): The text to be analyzed for arguments.
     - similarity_threshold (float, optional): A threshold value for similarity to filter arguments.
-    A dictionary is used to rename columns for better readability. An empty DataFrame is initialized to accumulate results. The method iteratively processes the text to find arguments using an opinion analyzer. If a cancellation signal is detected, the processing halts. Valid arguments are appended to the accumulated DataFrame, which is then periodically yielded for updates.
+
     The function handles:
     - Initializing a DataFrame with renamed columns.
     - Iterating through found arguments and checking for cancellation status.
@@ -196,6 +199,14 @@ with gr.Blocks() as interface:
         with gr.Column():
             gr.Markdown("## Spezifiziere Einstellungen")
             dropdown = gr.Dropdown(choices=MODELS, label="Wähle ein Model aus")
+            # Checkbox group for column selection
+            column_selection = gr.CheckboxGroup(
+                choices=list(COLUMN_RENAMING.values()),
+                value=list(
+                    COLUMN_RENAMING.values()
+                ),  # Default to selecting all columns
+                label="Wähle die anzuzeigenden Spalten aus",
+            )
             # Slider for similarity threshold
             similarity_threshold_slider = gr.Slider(
                 minimum=0,
@@ -207,7 +218,7 @@ with gr.Blocks() as interface:
             hyperparam_button = gr.Button("Einstellungen sichern")
             hyperparam_button.click(
                 fn=prepare_pipeline,  # Reset cancel status before starting
-                inputs=[dropdown],
+                inputs=[dropdown, column_selection],
                 outputs=[],
             )
     with gr.Row():
@@ -255,7 +266,7 @@ with gr.Blocks() as interface:
                 inputs=[output_table],
                 outputs=gr.File(label="Sichere Ergebnisse als Excel-Datei"),
             )
-
 # Launch the app with authentication
 if __name__ == "__main__":
+
     interface.launch(auth=LOGIN_CREDENTIALS, share=True)
