@@ -1,22 +1,33 @@
+import os
 import time
+from pathlib import Path
+from datetime import datetime
 import gradio as gr
 import pandas as pd
 from opinion_analyzer.analyzer import OpinionAnalyzer
 from opinion_analyzer.utils.helper import get_main_config
 
+# Authentication configuration
+LOGIN_CREDENTIALS = [
+    ("user1", "password1"),
+    ("user2", "password2"),
+]
+
 # Get configuration
 config = get_main_config()
 MODELS = [
+    "microsoft/Phi-3-mini-128k-instruct",
     "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
     "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
     "gpt-4o-2024-08-06",
 ]
+
 opinion_analyzer = OpinionAnalyzer(model_name_or_path=config["models"]["llm"])
 analyzer_dict = {"opinion_analyzer": opinion_analyzer}
+
 # Shared state for cancellation
 cancel_status = {"cancel": False}
-
 
 COLUMN_RENAMING = {
     "topic_original": "Worum geht es?",
@@ -31,6 +42,10 @@ COLUMN_RENAMING = {
     "similarity": "Sem. Ähnlichkeit",
     "model_name": "LLM",
 }
+
+"""key_value_pairs = [(k, v) for k, v in COLUMN_RENAMING.items()]
+for k, v in key_value_pairs:
+    COLUMN_RENAMING[k] = "\n".join(v.split())"""
 
 
 def prepare_pipeline(model_name_or_path):
@@ -79,12 +94,14 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
     - Yielding the accumulated DataFrame for updates.
     - Simulating processing time.
     """
-
     # Initialize an empty DataFrame to accumulate results
     accumulated_df = pd.DataFrame(
         columns=[new_col for old_col, new_col in COLUMN_RENAMING.items()]
     )
     accumulated_df = rename_columns(accumulated_df)
+    accumulated_df.style.set_table_styles(
+        [dict(selector="th", props=[("max-width", "50px")])]
+    )
     # Simulate finding arguments incrementally for the sake of demonstration
     print("Using this model: ", analyzer_dict["opinion_analyzer"].model_name_or_path)
     arguments = analyzer_dict["opinion_analyzer"].find_arguments(
@@ -101,6 +118,9 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
             # Append the current row to the accumulated DataFrame
             accumulated_df = pd.concat(
                 [accumulated_df, current_row_df], ignore_index=True
+            )
+            accumulated_df.style.set_table_styles(
+                [dict(selector="th", props=[("max-width", "50px")])]
             )
             # Yield the accumulated DataFrame to update the Gradio output
             yield accumulated_df
@@ -155,9 +175,18 @@ def save_as_excel(dataframe):
     Returns:
     str: Path to the saved Excel file.
     """
-    file_path = "/tmp/output.xlsx"
+    output_path = Path(config["paths"]["user_data"])
+    os.makedirs(output_path, exist_ok=True)
+    file_path = output_path / f"saved_results_{datetime.now().isoformat()}.xlsx"
     dataframe.to_excel(file_path, index=False)
-    return file_path
+    return str(file_path)
+
+
+def get_username(request: gr.Request):
+    # https://github.com/gradio-app/gradio/issues/3259
+    # https://stackoverflow.com/questions/77494902/how-to-retrieve-users-username-after-authenticating-in-gradio
+    print("The current user is: ", {request.username})
+    return {request.username}
 
 
 # Gradio app interface with vertical layout
@@ -189,10 +218,10 @@ with gr.Blocks() as interface:
                 lines=2,
                 placeholder="Füge ein Text ein, um entsprechende Argumente zu finden...",
             )
-            # Button to trigger the analysis
-            submit_button = gr.Button("Beginne Argumentensuche!")
-            # Button to cancel the operation
-            cancel_button = gr.Button("Abbrechen")
+            # Buttons to trigger the analysis and cancel the operation
+            with gr.Row():
+                submit_button = gr.Button("Beginne Argumentensuche!")
+                cancel_button = gr.Button("Abbrechen")
             # Output DataFrame
             output_table = gr.Dataframe(wrap=True)
             # Export button to save the DataFrame as an Excel file
@@ -226,6 +255,7 @@ with gr.Blocks() as interface:
                 inputs=[output_table],
                 outputs=gr.File(label="Sichere Ergebnisse als Excel-Datei"),
             )
-# Launch the app
+
+# Launch the app with authentication
 if __name__ == "__main__":
-    interface.launch(share=True)
+    interface.launch(auth=LOGIN_CREDENTIALS, share=True)

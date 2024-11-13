@@ -106,6 +106,7 @@ if __name__ == "__main__":
                     "filename": args.file,
                     "original_sentence": doc["original_sentence"],
                     "context": doc["context"],
+                    "url": f"https://www.parlament.ch/de/ratsbetrieb/suche-curia-vista/geschaeft?AffairId={bid}",
                 }
                 for n, doc in enumerate(
                     argument_text_expended_context.to_dict(orient="records")
