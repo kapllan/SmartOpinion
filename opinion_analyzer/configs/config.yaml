@@ -1,7 +1,7 @@
 models:
   sentence_similarity: intfloat/multilingual-e5-large #PM-AI/bi-encoder_msmarco_bert-base_german
   llm: meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo #VAGOsolutions/Llama-3.1-SauerkrautLM-8b-Instruct
-  stance_classifier: ../models/deepset_gbert-large_stance_classifier
+  stance_classifier: kapllan/deepset_gbert-large_stance_classifier
 paths:
   logs: ../logs
   language_detection: ../models/lid.176.bin
