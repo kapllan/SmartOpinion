@@ -20,5 +20,22 @@ thresholds:
     sentence_similarity: 0.8
 database:
   chromadb: smart_opinion_default_collection
+app:
+  column_renaming:
+    topic_original: Worum geht es?
+    label: Haltung
+    context: Kontext
+    argument_reason: Modellbegründung für gewählte Haltung
+    argument_original: Meinung
+    # reasoning: Begründung für die Meinung
+    reasoning_segment: Begründung für die Meinung
+    person: Person
+    party: Partei
+    canton: Kanton
+    similarity: Sem. Ähnlichkeit
+    model_name: LLM
+  neutral_limit: 5
+
+
 
 
