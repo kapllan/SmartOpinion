@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime
 import gradio as gr
 import pandas as pd
+from copy import deepcopy
 from opinion_analyzer.analyzer import OpinionAnalyzer
 from opinion_analyzer.utils.helper import get_main_config
 
@@ -31,19 +32,7 @@ analyzer_dict = {"opinion_analyzer": opinion_analyzer}
 # Shared state for cancellation
 cancel_status = {"cancel": False}
 
-COLUMN_RENAMING = {
-    "topic_original": "Worum geht es?",
-    "label": "Haltung",
-    "argument_reason": "Modellbegründung für gewählte Haltung",
-    "argument_original": "Meinung",
-    # "reasoning": "Begründung für die Meinung",
-    "reasoning_segment": "Begründung für die Meinung",
-    "person": "Person",
-    "party": "Partei",
-    "canton": "Kanton",
-    "similarity": "Sem. Ähnlichkeit",
-    "model_name": "LLM",
-}
+COLUMN_RENAMING = deepcopy(config["app"]["column_renaming"])
 
 
 def prepare_pipeline(model_name_or_path, selected_columns):
@@ -57,10 +46,15 @@ def prepare_pipeline(model_name_or_path, selected_columns):
     - Updates the global 'selected_columns'.
     - Prints a message indicating the change of the model.
     """
+
     global COLUMN_RENAMING
+
     COLUMN_RENAMING = {
-        k: v for k, v in COLUMN_RENAMING.items() if v in selected_columns
+        k: v
+        for k, v in config["app"]["column_renaming"].items()
+        if v in selected_columns
     }
+
     analyzer_dict["opinion_analyzer"] = OpinionAnalyzer(
         model_name_or_path=model_name_or_path
     )
@@ -113,9 +107,10 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
         topic_text=input_text, similarity_threshold=similarity_threshold
     )
     # For this example, simulate processing each argument one by one
+    neutral_count = 0
     for row in arguments:
         print(f"Current cancel status: ", cancel_status["cancel"])
-        if cancel_status["cancel"]:
+        if cancel_status["cancel"] or neutral_count >= config["app"]["neutral_limit"]:
             break  # Check for cancellation before processing each row
         if row["label"] in ["pro", "contra"]:
             current_row_df = pd.DataFrame([row])
@@ -131,6 +126,10 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
             yield accumulated_df
             # Simulate processing time (remove or adjust as needed)
             time.sleep(0.5)
+            neutral_count = 0
+        else:
+            neutral_count += 1
+            print(f"Number of neutral stances: {neutral_count}")
 
 
 # Function to reset the output table
@@ -217,7 +216,7 @@ with gr.Blocks() as interface:
                 step=0.01,
                 label="Schwellenwert für die semantischen Ähnlichkeit",
             )
-            hyperparam_button = gr.Button("Einstellungen sichern")
+            hyperparam_button = gr.Button("Einstellungen übernehmen")
             hyperparam_button.click(
                 fn=prepare_pipeline,  # Reset cancel status before starting
                 inputs=[dropdown, column_selection],
