@@ -9,8 +9,10 @@ from opinion_analyzer.utils.helper import get_main_config
 
 # Authentication configuration
 LOGIN_CREDENTIALS = [
-    ("user1", "password1"),
-    ("user2", "password2"),
+    ("daniel", "daniel"),
+    ("michael", "michael"),
+    ("marcel", "marcel"),
+    ("veton", "veton"),
 ]
 
 # Get configuration
