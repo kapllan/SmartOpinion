@@ -33,6 +33,7 @@ analyzer_dict = {"opinion_analyzer": opinion_analyzer}
 cancel_status = {"cancel": False}
 
 COLUMN_RENAMING = deepcopy(config["app"]["column_renaming"])
+SIMILARITY_THRESHOLD = config["thresholds"]["sentence_similarity"]
 
 
 def prepare_pipeline(model_name_or_path, selected_columns):
@@ -48,6 +49,7 @@ def prepare_pipeline(model_name_or_path, selected_columns):
     """
 
     global COLUMN_RENAMING
+    global SIMILARITY_THRESHOLD
 
     COLUMN_RENAMING = {
         k: v
@@ -179,6 +181,7 @@ def save_as_excel(dataframe):
     Returns:
     str: Path to the saved Excel file.
     """
+    dataframe["similarity_threshold"] = SIMILARITY_THRESHOLD
     output_path = Path(config["paths"]["user_data"])
     os.makedirs(output_path, exist_ok=True)
     file_path = output_path / f"saved_results_{datetime.now().isoformat()}.xlsx"
@@ -269,5 +272,5 @@ with gr.Blocks() as interface:
             )
 # Launch the app with authentication
 if __name__ == "__main__":
-
     interface.launch(auth=LOGIN_CREDENTIALS, share=True)
+
