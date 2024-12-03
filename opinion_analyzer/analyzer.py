@@ -270,7 +270,7 @@ class OpinionAnalyzer(ClientHandler):
                     "new_sentence": doc["document"],
                     "original_sentence": doc["metadata"]["original_sentence"],
                     "context": doc["metadata"]["context"],
-                    "similarity": round(1 - doc["distance"], 2),
+                    "similarity": round(1 - doc["distance"], 2)
                 }
             )
 
@@ -289,12 +289,12 @@ class OpinionAnalyzer(ClientHandler):
             )
 
         for topic_entry in topic_text_prepared.to_dict(orient="records"):
-            results_semantic_search = self.prepare_argument_text(
+            semantic_search_results = self.prepare_argument_text(
                 query=topic_entry["new_sentence"],
                 similarity_threshold=similarity_threshold,
             )
 
-            for argument_entry in results_semantic_search:
+            for argument_entry in semantic_search_results:
 
                 result = self.categorize_argument(
                     topic_text=topic_entry["new_sentence"],
@@ -302,7 +302,7 @@ class OpinionAnalyzer(ClientHandler):
                     method="llm",
                 )
 
-                stance = adjust_labels(
+                stance_label = adjust_labels(
                     label=result["label"],
                     score=result["score"],
                     threshold=self.stance_class_threshold,
@@ -314,7 +314,7 @@ class OpinionAnalyzer(ClientHandler):
                     prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
                         # topic=segment,
                         claim=argument_entry["new_sentence"],
-                        stance=stance,
+                        stance=stance_label,
                         context=argument_entry["context"],
                     )
                 )
@@ -331,7 +331,7 @@ class OpinionAnalyzer(ClientHandler):
                     log.error("No field 'reasoning' in reasoning output")
                 # Extracting the person of the argument
                 person_info = {"person": "", "party": "", "canton": ""}
-                if stance in ["pro", "contra"]:
+                if stance_label in ["pro", "contra"]:
                     person_info = self.generate(
                         prompt=prompt_dict[config["prompts"]["extract_person"]].format(
                             # topic=segment,
@@ -357,7 +357,7 @@ class OpinionAnalyzer(ClientHandler):
                     "party": person_info["party"],
                     "canton": person_info["canton"],
                     "context": argument_entry["context"],
-                    "label": stance,
+                    "label": stance_label,
                     "score": result["score"],
                     "reasoning": reason["reasoning"] if "reasoning" in reason else "",
                     "reasoning_segment": (
@@ -367,6 +367,7 @@ class OpinionAnalyzer(ClientHandler):
                     ),
                     "similarity": argument_entry["similarity"],
                     "model_name": self.model_name_or_path,
+                    "num_matches": len(semantic_search_results)
                 }
 
                 yield entry

@@ -103,6 +103,7 @@ if __name__ == "__main__":
             ],
             metadatas=[
                 {
+                    "business_id": bid,
                     "filename": args.file,
                     "original_sentence": doc["original_sentence"],
                     "context": doc["context"],

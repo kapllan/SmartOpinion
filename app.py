@@ -1,10 +1,11 @@
 import os
-import time
-from pathlib import Path
+from copy import deepcopy
 from datetime import datetime
+from pathlib import Path
+
 import gradio as gr
 import pandas as pd
-from copy import deepcopy
+
 from opinion_analyzer.analyzer import OpinionAnalyzer
 from opinion_analyzer.utils.helper import get_main_config
 
@@ -34,6 +35,9 @@ cancel_status = {"cancel": False}
 
 COLUMN_RENAMING = deepcopy(config["app"]["column_renaming"])
 SIMILARITY_THRESHOLD = config["thresholds"]["sentence_similarity"]
+PROGRESS_MIN = 0
+PROGRESS_MAX = 100
+PROGRESS = 0
 
 
 def prepare_pipeline(model_name_or_path, selected_columns):
@@ -80,6 +84,36 @@ def rename_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
     return dataframe
 
 
+def update_progress(total_num_matches: int, analyzed_matches: int) -> str:
+    """
+    Updates the progress bar with the current analysis status.
+
+    :param total_num_matches: The total number of thematic matches found.
+    :type total_num_matches: int
+    :param analyzed_matches: The number of matches that have been checked for arguments.
+    :type analyzed_matches: int
+    :return: A string containing the progress information.
+    :rtype: str
+
+    Example:
+    >>> update_progress(5, 3)
+    'Die Argumentsuche läuft! Es gibt insgesamt <PROGRESS_MAX> thematische Übereinstimmungen. Davon wurden bereits 3 auf Argumente überprüft. Es wurden 5 Argumente gefunden.'
+    """
+    if total_num_matches == analyzed_matches and total_num_matches > 0:
+        progress_info = (
+            f"Die Argumentensuche ist abgeschlossen! Es gibt insgesamt {PROGRESS_MAX} thematische Übereinstimmungen. "
+            f"Davon wurden bereits {analyzed_matches} auf Argumente überprüft. "
+            f"Es wurden {total_num_matches} Argumente gefunden."
+        )
+    else:
+        progress_info = (
+            f"Die Argumentsuche läuft! Es gibt insgesamt {PROGRESS_MAX} thematische Übereinstimmungen. "
+            f"Davon wurden bereits {analyzed_matches} auf Argumente überprüft. "
+            f"Es wurden {total_num_matches} Argumente gefunden."
+        )
+    return progress_info
+
+
 # Function to perform argument mining and yield results incrementally
 def perform_argument_mining(input_text: str, similarity_threshold: float = None):
     """
@@ -95,7 +129,13 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
     - Yielding the accumulated DataFrame for updates.
     - Simulating processing time.
     """
+
     # Initialize an empty DataFrame to accumulate results
+    global PROGRESS
+    global PROGRESS_MAX
+
+    PROGRESS_MAX = 0
+
     accumulated_df = pd.DataFrame(
         columns=[new_col for old_col, new_col in COLUMN_RENAMING.items()]
     )
@@ -108,9 +148,13 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
     arguments = analyzer_dict["opinion_analyzer"].find_arguments(
         topic_text=input_text, similarity_threshold=similarity_threshold
     )
-    # For this example, simulate processing each argument one by one
+
     neutral_count = 0
-    for row in arguments:
+    already_analyzed = 0
+    for idx, row in enumerate(arguments):
+
+        PROGRESS_MAX = row["num_matches"]
+
         print(f"Current cancel status: ", cancel_status["cancel"])
         if cancel_status["cancel"] or neutral_count >= config["app"]["neutral_limit"]:
             break  # Check for cancellation before processing each row
@@ -124,14 +168,17 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
             accumulated_df.style.set_table_styles(
                 [dict(selector="th", props=[("max-width", "50px")])]
             )
-            # Yield the accumulated DataFrame to update the Gradio output
-            yield accumulated_df
-            # Simulate processing time (remove or adjust as needed)
-            time.sleep(0.5)
+
+            PROGRESS = idx
             neutral_count = 0
         else:
             neutral_count += 1
             print(f"Number of neutral stances: {neutral_count}")
+        already_analyzed += 1
+        progress_info = update_progress(len(accumulated_df), already_analyzed)
+        # Yield the accumulated DataFrame to update the Gradio output
+        yield accumulated_df, progress_info
+        # Simulate processing time (remove or adjust as needed)
 
 
 # Function to reset the output table
@@ -225,6 +272,7 @@ with gr.Blocks() as interface:
                 inputs=[dropdown, column_selection],
                 outputs=[],
             )
+
     with gr.Row():
         with gr.Column():
             # Input text box
@@ -237,21 +285,38 @@ with gr.Blocks() as interface:
             with gr.Row():
                 submit_button = gr.Button("Beginne Argumentensuche!")
                 cancel_button = gr.Button("Abbrechen")
+
+            # Progress bar display
+            progress_display = gr.Textbox(label="Status der Argumentensuche wird hier angezeigt.", interactive=False,
+                                          lines=1, visible=False)
+
             # Output DataFrame
-            output_table = gr.Dataframe(wrap=True)
+            output_table = gr.Dataframe(wrap=True, visible=False)
             # Export button to save the DataFrame as an Excel file
-            export_button = gr.Button("Exportieren als Excel")
+            export_button = gr.Button("Exportieren als Excel", visible=False)
             # Link input and output with the function
             submit_button.click(
                 fn=setup_operation,
                 inputs=[],
                 outputs=[],
             )
+
+
+            def change_visibility():
+                return {progress_display: gr.Textbox(visible=True),
+                        output_table: gr.Dataframe(visible=True),
+                        export_button: gr.Button(visible=True)
+                        }
+
+
+            submit_button.click(fn=change_visibility, outputs=[progress_display, output_table, export_button])
+
             submit_button.click(
                 fn=perform_argument_mining,  # Reset cancel status before starting
                 inputs=[input_text, similarity_threshold_slider],
-                outputs=output_table,
+                outputs=[output_table, progress_display]
             )
+
             # Reset the output table when new input is provided
             input_text.change(
                 fn=reset_output,
@@ -273,4 +338,3 @@ with gr.Blocks() as interface:
 # Launch the app with authentication
 if __name__ == "__main__":
     interface.launch(auth=LOGIN_CREDENTIALS, share=True)
-

@@ -57,6 +57,7 @@ wandb = "^0.18.3"
 xformers = "^0.0.27"
 textwrap3 = "0.9.2"
 pyngrok= "7.2.1"
+pylint = "^3.3.2"
 [tool.poetry.dev-dependencies]
 
 [build-system]
