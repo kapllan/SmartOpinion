@@ -35,9 +35,6 @@ cancel_status = {"cancel": False}
 
 COLUMN_RENAMING = deepcopy(config["app"]["column_renaming"])
 SIMILARITY_THRESHOLD = config["thresholds"]["sentence_similarity"]
-PROGRESS_MIN = 0
-PROGRESS_MAX = 100
-PROGRESS = 0
 
 
 def prepare_pipeline(model_name_or_path, selected_columns):
@@ -84,7 +81,7 @@ def rename_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
     return dataframe
 
 
-def update_progress(total_num_matches: int, analyzed_matches: int) -> str:
+def update_progress(total_num_matches: int, analyzed_matches: int, num_arguments: int, canceled=False) -> str:
     """
     Updates the progress bar with the current analysis status.
 
@@ -99,17 +96,20 @@ def update_progress(total_num_matches: int, analyzed_matches: int) -> str:
     >>> update_progress(5, 3)
     'Die Argumentsuche läuft! Es gibt insgesamt <PROGRESS_MAX> thematische Übereinstimmungen. Davon wurden bereits 3 auf Argumente überprüft. Es wurden 5 Argumente gefunden.'
     """
-    if total_num_matches == analyzed_matches and total_num_matches > 0:
+    if canceled:
+        progress_info = "Die Argumentensuche wurde abgebrochen!"
+
+    elif total_num_matches == analyzed_matches and total_num_matches > 0:
         progress_info = (
-            f"Die Argumentensuche ist abgeschlossen! Es gibt insgesamt {PROGRESS_MAX} thematische Übereinstimmungen. "
+            f"Die Argumentensuche ist abgeschlossen! Es gibt insgesamt {total_num_matches} thematische Übereinstimmungen. "
             f"Davon wurden bereits {analyzed_matches} auf Argumente überprüft. "
-            f"Es wurden {total_num_matches} Argumente gefunden."
+            f"Es wurden {num_arguments} Argumente gefunden."
         )
     else:
         progress_info = (
-            f"Die Argumentsuche läuft! Es gibt insgesamt {PROGRESS_MAX} thematische Übereinstimmungen. "
+            f"Die Argumentsuche läuft! Es gibt insgesamt {total_num_matches} thematische Übereinstimmungen. "
             f"Davon wurden bereits {analyzed_matches} auf Argumente überprüft. "
-            f"Es wurden {total_num_matches} Argumente gefunden."
+            f"Es wurden {num_arguments} Argumente gefunden."
         )
     return progress_info
 
@@ -130,12 +130,6 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
     - Simulating processing time.
     """
 
-    # Initialize an empty DataFrame to accumulate results
-    global PROGRESS
-    global PROGRESS_MAX
-
-    PROGRESS_MAX = 0
-
     accumulated_df = pd.DataFrame(
         columns=[new_col for old_col, new_col in COLUMN_RENAMING.items()]
     )
@@ -151,13 +145,13 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
 
     neutral_count = 0
     already_analyzed = 0
+
     for idx, row in enumerate(arguments):
-
-        PROGRESS_MAX = row["num_matches"]
-
-        print(f"Current cancel status: ", cancel_status["cancel"])
         if cancel_status["cancel"] or neutral_count >= config["app"]["neutral_limit"]:
-            break  # Check for cancellation before processing each row
+            progress_info = update_progress(row["num_matches"], already_analyzed, len(accumulated_df),
+                                            canceled=cancel_status["cancel"])
+            yield accumulated_df, progress_info
+            break
         if row["label"] in ["pro", "contra"]:
             current_row_df = pd.DataFrame([row])
             current_row_df = rename_columns(current_row_df)
@@ -168,17 +162,15 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
             accumulated_df.style.set_table_styles(
                 [dict(selector="th", props=[("max-width", "50px")])]
             )
-
-            PROGRESS = idx
             neutral_count = 0
         else:
             neutral_count += 1
             print(f"Number of neutral stances: {neutral_count}")
         already_analyzed += 1
-        progress_info = update_progress(len(accumulated_df), already_analyzed)
-        # Yield the accumulated DataFrame to update the Gradio output
+        progress_info = update_progress(row["num_matches"], already_analyzed, len(accumulated_df),
+                                        canceled=cancel_status["cancel"])
+        
         yield accumulated_df, progress_info
-        # Simulate processing time (remove or adjust as needed)
 
 
 # Function to reset the output table
@@ -200,7 +192,6 @@ def cancel_operation():
     Modifies the global variable cancel_status by setting its "cancel" key to True, indicating that an operation should be halted.
     """
     cancel_status["cancel"] = True
-    print(cancel_status)
 
 
 # Function to clear the cancel flag and reset
@@ -293,7 +284,7 @@ with gr.Blocks() as interface:
             # Output DataFrame
             output_table = gr.Dataframe(wrap=True, visible=False)
             # Export button to save the DataFrame as an Excel file
-            export_button = gr.Button("Exportieren als Excel", visible=False)
+            export_button = gr.Button("Exportiere die Ergebnisse als Excel", visible=False)
             # Link input and output with the function
             submit_button.click(
                 fn=setup_operation,
@@ -312,7 +303,7 @@ with gr.Blocks() as interface:
             submit_button.click(fn=change_visibility, outputs=[progress_display, output_table, export_button])
 
             submit_button.click(
-                fn=perform_argument_mining,  # Reset cancel status before starting
+                fn=perform_argument_mining,
                 inputs=[input_text, similarity_threshold_slider],
                 outputs=[output_table, progress_display]
             )
@@ -327,7 +318,6 @@ with gr.Blocks() as interface:
             cancel_button.click(
                 fn=cancel_operation,
                 inputs=[],
-                outputs=[],
             )
             # Bind the export button
             export_button.click(
