@@ -88,7 +88,7 @@ if __name__ == "__main__":
 
         argument_text_expended_context = prepare_documents(
             text=config["paths"]["data"] / "referendums" / bid / args.file,
-            method="llm",
+            method="context",
             client_handler=opinion_analyzer,
         )
 

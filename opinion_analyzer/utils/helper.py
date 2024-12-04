@@ -390,8 +390,12 @@ def compute_metrics_multi_class(p: EvalPrediction, y_true=None, y_pred=None):
 
 
 def adjust_labels(label: str, score: float, threshold: float):
-    if threshold is None or score is None or score > threshold:
-        return label
+    if threshold is None:
+        return str(label).lower()
+    if score is None:
+        return str(label).lower()
+    if score >= threshold:
+        return str(label).lower()
     return "Neutral"
 
 

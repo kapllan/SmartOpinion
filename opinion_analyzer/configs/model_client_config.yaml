@@ -37,6 +37,9 @@ meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo:
 meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo:
   client: together
   template: null
+meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo:
+  client: together
+  template: null
 mistralai/Mixtral-8x7B-Instruct-v0.1:
   client: together
   template: null

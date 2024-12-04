@@ -102,7 +102,7 @@ class OpinionAnalyzer(ClientHandler):
             "text-classification", model=config["models"]["stance_classifier"]
         )
 
-        self.stance_class_threshold = 0.5
+        self.stance_class_threshold = config["thresholds"]["stance_classification"]
 
         self.sentence_transformer_ef = (
             embedding_functions.SentenceTransformerEmbeddingFunction(
@@ -201,6 +201,8 @@ class OpinionAnalyzer(ClientHandler):
 
         elif method == "finetuned":
             output = self.get_stance(topic_text, text_sample)
+            output["model_generation"] = output["score"]
+
         else:
             raise f"Method {method} does not exist. Choose between 'llm' or 'finetuned'."
 
@@ -281,7 +283,7 @@ class OpinionAnalyzer(ClientHandler):
             else:
                 raise ValueError(f"Field '{field_name}' not found in the document.")
 
-        return ["alles"] + sorted(list(unique_values))
+        return [config["app"]["place_hold_all_sources"]] + sorted(list(unique_values))
 
     def find_matches(self, query: str, similarity_threshold) -> list[dict]:
         matches = self.collection.query(query_texts=[query], n_results=1000)
@@ -312,7 +314,7 @@ class OpinionAnalyzer(ClientHandler):
 
     def find_arguments(
             self, topic_text: str, rewrite=True, similarity_threshold: float = None,
-            allowed_business_ids: list[str] = ["alles"]
+            allowed_business_ids: list[str] = [config["app"]["place_hold_all_sources"]]
     ) -> list[dict]:
 
         if rewrite:
@@ -330,84 +332,92 @@ class OpinionAnalyzer(ClientHandler):
             )
 
             for argument_entry in semantic_search_results:
-                if "alles" in allowed_business_ids or argument_entry["business_id"] in allowed_business_ids:
+                if config["app"]["place_hold_all_sources"] in allowed_business_ids or argument_entry[
+                    "business_id"] in allowed_business_ids:
 
-                    result = self.categorize_argument(
+                    stance_precheck = self.categorize_argument(
                         topic_text=topic_entry["new_sentence"],
                         text_sample=argument_entry["new_sentence"],
-                        method="llm",
+                        method="finetuned",
                     )
 
-                    stance_label = adjust_labels(
-                        label=result["label"],
-                        score=result["score"],
-                        threshold=self.stance_class_threshold,
-                    )
-                    # if stance in ["pro", "contra", "neutral"]:
+                    if stance_precheck["score"] >= self.stance_class_threshold:
 
-                    # Extracting the reasoning for the argument
-                    reason = self.generate(
-                        prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
-                            # topic=segment,
-                            claim=argument_entry["new_sentence"],
-                            stance=stance_label,
-                            context=argument_entry["context"],
+                        result = self.categorize_argument(
+                            topic_text=topic_entry["new_sentence"],
+                            text_sample=argument_entry["new_sentence"],
+                            method="llm",
                         )
-                    )
 
-                    try:
-                        reason = literal_eval(reason)
-                    except SyntaxError as se:
-                        print(f"SyntaxError: {se}")
-                        log.error(se)
-                        reason = {"reasoning_segment": "", "reasoning": ""}
-                    if "reasoning_segment" not in reason.keys():
-                        log.error("No field 'reasoning_segment' in reasoning output")
-                    if "reasoning" not in reason.keys():
-                        log.error("No field 'reasoning' in reasoning output")
-                    # Extracting the person of the argument
-                    person_info = {"person": "", "party": "", "canton": ""}
-                    if stance_label in ["pro", "contra"]:
-                        person_info = self.generate(
-                            prompt=prompt_dict[config["prompts"]["extract_person"]].format(
+                        stance_label = adjust_labels(
+                            label=result["label"],
+                            score=result["score"],
+                            threshold=self.stance_class_threshold,
+                        )
+
+                        # Extracting the reasoning for the argument
+                        reason = self.generate(
+                            prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
                                 # topic=segment,
-                                sentence=argument_entry["original_sentence"],
-                                # stance=stance,
+                                claim=argument_entry["new_sentence"],
+                                stance=stance_label,
                                 context=argument_entry["context"],
                             )
                         )
 
                         try:
-                            person_info = literal_eval(person_info)
+                            reason = literal_eval(reason)
                         except SyntaxError as se:
                             print(f"SyntaxError: {se}")
-                            person_info = {"person": "", "party": "", "canton": ""}
+                            log.error(se)
+                            reason = {"reasoning_segment": "", "reasoning": ""}
+                        if "reasoning_segment" not in reason.keys():
+                            log.error("No field 'reasoning_segment' in reasoning output")
+                        if "reasoning" not in reason.keys():
+                            log.error("No field 'reasoning' in reasoning output")
+                        # Extracting the person of the argument
+                        person_info = {"person": "", "party": "", "canton": ""}
+                        if stance_label in ["pro", "contra"]:
+                            person_info = self.generate(
+                                prompt=prompt_dict[config["prompts"]["extract_person"]].format(
+                                    # topic=segment,
+                                    sentence=argument_entry["original_sentence"],
+                                    # stance=stance,
+                                    context=argument_entry["context"],
+                                )
+                            )
 
-                    entry = {
-                        "topic_original": topic_entry["original_sentence"],
-                        "topic_rewritten": topic_entry["new_sentence"],
-                        "argument_rewritten": argument_entry["new_sentence"],
-                        "argument_original": argument_entry["original_sentence"],
-                        "argument_reason": result["model_generation"],
-                        "person": person_info["person"],
-                        "party": person_info["party"],
-                        "canton": person_info["canton"],
-                        "context": argument_entry["context"],
-                        "label": stance_label,
-                        "score": result["score"],
-                        "reasoning": reason["reasoning"] if "reasoning" in reason else "",
-                        "reasoning_segment": (
-                            reason["reasoning_segment"]
-                            if "reasoning_segment" in reason
-                            else ""
-                        ),
-                        "similarity": argument_entry["similarity"],
-                        "model_name": self.model_name_or_path,
-                        "num_matches": len(semantic_search_results),
-                        "business_id": argument_entry["business_id"]
-                    }
+                            try:
+                                person_info = literal_eval(person_info)
+                            except SyntaxError as se:
+                                print(f"SyntaxError: {se}")
+                                person_info = {"person": "", "party": "", "canton": ""}
 
-                    yield entry
+                        entry = {
+                            "topic_original": topic_entry["original_sentence"],
+                            "topic_rewritten": topic_entry["new_sentence"],
+                            "argument_rewritten": argument_entry["new_sentence"],
+                            "argument_original": argument_entry["original_sentence"],
+                            "argument_reason": result["model_generation"],
+                            "person": person_info["person"],
+                            "party": person_info["party"],
+                            "canton": person_info["canton"],
+                            "context": argument_entry["context"],
+                            "label": stance_label,
+                            "score": result["score"],
+                            "reasoning": reason["reasoning"] if "reasoning" in reason else "",
+                            "reasoning_segment": (
+                                reason["reasoning_segment"]
+                                if "reasoning_segment" in reason
+                                else ""
+                            ),
+                            "similarity": argument_entry["similarity"],
+                            "model_name": self.model_name_or_path,
+                            "num_matches": len(semantic_search_results),
+                            "business_id": argument_entry["business_id"]
+                        }
+
+                        yield entry
 
 
 if __name__ == "__main__":
@@ -527,7 +537,7 @@ if __name__ == "__main__":
         if args.rewrite:
             topic_text_expended_context = prepare_documents(
                 text=topic_text,
-                method="llm",
+                method="context",
                 client_handler=opinion_analyzer,
             )
 

@@ -21,10 +21,11 @@ LOGIN_CREDENTIALS = [
 config = get_main_config()
 
 MODELS = [
+    "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
     "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
     "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
-    "gpt-4o-2024-08-06",
+    "gpt-4o-2024-08-06"
 ]
 
 opinion_analyzer = OpinionAnalyzer(model_name_or_path=config["models"]["llm"])
@@ -102,7 +103,18 @@ def update_progress(total_num_matches: int, analyzed_matches: int, num_arguments
     """
 
     if canceled:
-        progress_info = "Die Argumentensuche wurde abgebrochen!"
+        progress_info = (
+            f"Die Argumentensuche wurde abgebrochen! Es gibt insgesamt {total_num_matches} thematische Übereinstimmungen. "
+            f"Davon wurden bereits {analyzed_matches} auf Argumente überprüft. "
+            f"Es wurden {num_arguments} Argumente gefunden."
+        )
+    elif analyzed_matches == config["app"]["neutral_limit"] and num_arguments == 0:
+        progress_info = (
+            f"Die Argumentensuche wurde vorzeitig beendet, da semantisch übereinstimmenden Kontexte {config['app']['neutral_limit']}-mal hintereinander keine Pro- oder Contra-Argumente geliefert haben. "
+            f"Es gibt insgesamt {total_num_matches} thematische Übereinstimmungen. "
+            f"Davon wurden bereits {analyzed_matches} auf Argumente überprüft. "
+            f"Es wurden {num_arguments} Argumente gefunden."
+        )
     elif total_num_matches == 0:
         progress_info = "Es wurden keine Argumente gefunden."
     elif total_num_matches == analyzed_matches and total_num_matches > 0:
@@ -158,7 +170,12 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
     already_analyzed = 0
 
     for idx, row in enumerate(arguments):
-        if cancel_status["cancel"] or neutral_count >= config["app"]["neutral_limit"]:
+        if cancel_status["cancel"]:
+            progress_info = update_progress(row["num_matches"], already_analyzed, len(accumulated_df),
+                                            canceled=cancel_status["cancel"])
+            yield accumulated_df, progress_info
+            break
+        if neutral_count >= config["app"]["neutral_limit"]:
             progress_info = update_progress(row["num_matches"], already_analyzed, len(accumulated_df),
                                             canceled=cancel_status["cancel"])
             yield accumulated_df, progress_info
@@ -231,6 +248,7 @@ def save_as_excel(dataframe):
     str: Path to the saved Excel file.
     """
     dataframe["similarity_threshold"] = SIMILARITY_THRESHOLD
+    dataframe["selected_sources"] = "; ".join(SELECTED_SOURCES)
     output_path = Path(config["paths"]["user_data"])
     os.makedirs(output_path, exist_ok=True)
     file_path = output_path / f"saved_results_{datetime.now().isoformat()}.xlsx"
