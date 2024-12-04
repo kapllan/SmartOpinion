@@ -86,6 +86,30 @@ def rename_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
     return dataframe
 
 
+def filter_columns(dataframe: pd.DataFrame, selected_columns: list[str]) -> pd.DataFrame:
+    """
+    Filter a DataFrame to show only the selected columns.
+
+    :param dataframe: The DataFrame to filter.
+    :type dataframe: pd.DataFrame
+    :param selected_columns: A list of column names to keep in the DataFrame.
+    :type selected_columns: list[str]
+    :return: A DataFrame containing only the specified columns, or the original DataFrame if no columns are specified.
+    :rtype: pd.DataFrame
+    """
+
+    """global COLUMN_RENAMING
+
+    COLUMN_RENAMING = {
+        k: v
+        for k, v in config["app"]["column_renaming"].items()
+        if v in selected_columns
+    }"""
+    if selected_columns:
+        return dataframe[selected_columns]
+    return dataframe
+
+
 def update_progress(total_num_matches: int, analyzed_matches: int, num_arguments: int, canceled=False) -> str:
     """
     Updates the progress bar with the current analysis status.
@@ -133,7 +157,8 @@ def update_progress(total_num_matches: int, analyzed_matches: int, num_arguments
 
 
 # Function to perform argument mining and yield results incrementally
-def perform_argument_mining(input_text: str, similarity_threshold: float = None):
+def perform_argument_mining(input_text: str, selected_columns: list[str],
+                            similarity_threshold: float = config["thresholds"]["sentence_similarity"]):
     """
     Performs argument mining on the provided input text.
     Parameters:
@@ -184,6 +209,7 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
         if row["label"] in ["pro", "contra"]:
             current_row_df = pd.DataFrame([row])
             current_row_df = rename_columns(current_row_df)
+            current_row_df = filter_columns(current_row_df, selected_columns)
             # Append the current row to the accumulated DataFrame
             accumulated_df = pd.concat(
                 [accumulated_df, current_row_df], ignore_index=True
@@ -285,6 +311,7 @@ with gr.Blocks() as interface:
                 label="Spaltenauswahl",
                 info="Wähle die Spalten, die in der Ergebnistabelle dargestellt werden sollen.",
             )
+
             # Slider for similarity threshold
             similarity_threshold_slider = gr.Slider(
                 minimum=0,
@@ -340,7 +367,7 @@ with gr.Blocks() as interface:
 
             submit_button.click(
                 fn=perform_argument_mining,
-                inputs=[input_text, similarity_threshold_slider],
+                inputs=[input_text, column_selection, similarity_threshold_slider],
                 outputs=[output_table, progress_display]
             )
 
@@ -361,6 +388,14 @@ with gr.Blocks() as interface:
                 inputs=[output_table],
                 outputs=gr.File(label="Sichere Ergebnisse als Excel-Datei"),
             )
+
+            # Update DataFrame display based on selected columns
+            column_selection.change(
+                fn=filter_columns,
+                inputs=[output_table, column_selection],
+                outputs=output_table,
+            )
 # Launch the app with authentication
 if __name__ == "__main__":
-    interface.launch(auth=LOGIN_CREDENTIALS, share=True)
+    # interface.launch(auth=LOGIN_CREDENTIALS, share=True)
+    interface.launch(share=True)

@@ -251,6 +251,7 @@ class OpinionAnalyzer(ClientHandler):
 
         elif method == "finetuned":
             output = self.get_stance(topic_text, text_sample)
+            output["score"] = round(output["score"], 2)
             output["model_generation"] = output["score"]
 
         else:
@@ -294,7 +295,7 @@ class OpinionAnalyzer(ClientHandler):
             evidence = self.generate(
                 prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
                     topic=topic,
-                    #claim=claim,
+                    # claim=claim,
                     stance=stance,
                     context=context
                 )
