@@ -7,17 +7,16 @@ import os
 from pathlib import Path
 from pprint import pprint
 from typing import Literal
-from ast import literal_eval
+
+import chromadb
 import pandas as pd
 import spacy
-from bs4 import BeautifulSoup
-from humanfriendly.terminal import output
-from sentence_transformers import SentenceTransformer, util
-from spacy.lang.ja.syntax_iterators import labels
-from transformers import pipeline
-import chromadb
-from chromadb.utils import embedding_functions
 import torch
+from bs4 import BeautifulSoup
+from chromadb.utils import embedding_functions
+from sentence_transformers import SentenceTransformer, util
+from transformers import pipeline
+
 from opinion_analyzer.data_handler.prompt_database import prompt_dict
 from opinion_analyzer.inference.client_handler import ClientHandler
 from opinion_analyzer.utils.helper import (
@@ -38,7 +37,7 @@ log = get_logger()
 
 
 def prepare_documents(
-    text: Path | str, method: Literal["llm", "context", None], client_handler
+        text: Path | str, method: Literal["llm", "context", None], client_handler
 ) -> list[dict]:
     """
     Prepare documents for text processing.
@@ -87,10 +86,10 @@ class OpinionAnalyzer(ClientHandler):
     stance_class_threshold = 0.9
 
     def __init__(
-        self,
-        model_name_or_path: str = None,
-        tokenizer_model: str = None,
-        model_client: Literal["together", "openai"] = None,
+            self,
+            model_name_or_path: str = None,
+            tokenizer_model: str = None,
+            model_client: Literal["together", "openai"] = None,
     ):
         # Call the parent class's __init__ method
         super().__init__(
@@ -144,7 +143,7 @@ class OpinionAnalyzer(ClientHandler):
     def get_stance(self, topic_text: str, text_sample: str):
 
         text = (
-            topic_text + f" {self.stance_classifier.tokenizer.sep_token} " + text_sample
+                topic_text + f" {self.stance_classifier.tokenizer.sep_token} " + text_sample
         )
         result = self.stance_classifier(text)[0]
 
@@ -161,11 +160,11 @@ class OpinionAnalyzer(ClientHandler):
         return result
 
     def categorize_argument(
-        self,
-        topic_text: str,
-        text_sample: str,
-        prompt: str = None,
-        method: Literal["llm", "finetuned"] = None,
+            self,
+            topic_text: str,
+            text_sample: str,
+            prompt: str = None,
+            method: Literal["llm", "finetuned"] = None,
     ):
         """is_argument = self.is_argument(topic_text, text_sample)
 
@@ -185,15 +184,15 @@ class OpinionAnalyzer(ClientHandler):
             if label in ["pro", "contra", "neutral"]:
                 output = {"label": label, "score": None}
             elif (
-                label.startswith("pro")
-                or label.startswith("contra")
-                or label.startswith("neutral")
+                    label.startswith("pro")
+                    or label.startswith("contra")
+                    or label.startswith("neutral")
             ):
                 output = {"label": label.split(" ")[0], "score": None}
             elif (
-                label.endswith("pro")
-                or label.endswith("contra")
-                or label.endswith("neutral")
+                    label.endswith("pro")
+                    or label.endswith("contra")
+                    or label.endswith("neutral")
             ):
                 output = {"label": label.split(" ")[-1], "score": None}
             else:
@@ -213,7 +212,7 @@ class OpinionAnalyzer(ClientHandler):
         return self.generate(prompt=prompt)
 
     def extract_arguments(
-        self, topic_text: str, argument_text: str, prompt: str = None
+            self, topic_text: str, argument_text: str, prompt: str = None
     ):
 
         if prompt is None:
@@ -250,6 +249,40 @@ class OpinionAnalyzer(ClientHandler):
 
         return sub_dicts
 
+    def get_unique_field_values(self, field_name: str, collection_field: str = "metadatas"):
+        """
+        Retrieve all unique values of a specified field from a ChromaDB collection.
+
+        This function extracts unique values from a specified field within a ChromaDB collection.
+
+        :param collection: The ChromaDB collection object.
+        :type collection: chromadb.Collection
+        :param field_name: The name of the field for which unique values are to be retrieved.
+        :type field_name: str
+        :return: A set containing all unique values of the specified field.
+        :rtype: set
+
+        :raises ValueError: If the specified field is not present in the documents.
+        :raises Exception: If there is an error in retrieving documents from the collection.
+        """
+        try:
+            all_documents = self.collection.get(include=["documents", "metadatas", "embeddings"])
+        except Exception as e:
+            raise Exception(f"Error retrieving documents from the collection: {e}")
+
+        if not all_documents or 'documents' not in all_documents:
+            raise ValueError("No documents retrieved from the collection.")
+
+        unique_values = set()
+
+        for document in all_documents[collection_field]:
+            if field_name in document:
+                unique_values.add(document[field_name])
+            else:
+                raise ValueError(f"Field '{field_name}' not found in the document.")
+
+        return ["alles"] + sorted(list(unique_values))
+
     def find_matches(self, query: str, similarity_threshold) -> list[dict]:
         matches = self.collection.query(query_texts=[query], n_results=1000)
         matches = self.convert_to_sub_dicts(matches)
@@ -270,14 +303,15 @@ class OpinionAnalyzer(ClientHandler):
                     "new_sentence": doc["document"],
                     "original_sentence": doc["metadata"]["original_sentence"],
                     "context": doc["metadata"]["context"],
-                    "similarity": round(1 - doc["distance"], 2)
+                    "similarity": round(1 - doc["distance"], 2),
+                    "business_id": doc["metadata"]["business_id"]
                 }
             )
 
         return results
 
     def find_arguments(
-        self, topic_text: str, rewrite=True, similarity_threshold: float = None
+            self, topic_text: str, rewrite=True, similarity_threshold: float = None, allowed_business_ids=list[str]
     ) -> list[dict]:
 
         if rewrite:
@@ -367,7 +401,8 @@ class OpinionAnalyzer(ClientHandler):
                     ),
                     "similarity": argument_entry["similarity"],
                     "model_name": self.model_name_or_path,
-                    "num_matches": len(semantic_search_results)
+                    "num_matches": len(semantic_search_results),
+                    "business_id": argument_entry["business_id"]
                 }
 
                 yield entry
@@ -504,9 +539,9 @@ if __name__ == "__main__":
             if args.collection_name is None:
                 argument_text_expended_context = prepare_documents(
                     text=config["paths"]["data"]
-                    / "referendums"
-                    / args.business_id
-                    / args.file,
+                         / "referendums"
+                         / args.business_id
+                         / args.file,
                     method="llm",
                     client_handler=opinion_analyzer,
                 )
@@ -579,8 +614,8 @@ if __name__ == "__main__":
                         debatable = "ja"
                         if args.debatability_check:
                             debatable = (
-                                opinion_analyzer.is_debatable(sent).lower().strip()
-                                == "ja"
+                                    opinion_analyzer.is_debatable(sent).lower().strip()
+                                    == "ja"
                             )
                         if debatable == "ja":
                             result = opinion_analyzer.categorize_argument(

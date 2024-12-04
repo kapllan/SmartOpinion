@@ -34,10 +34,11 @@ analyzer_dict = {"opinion_analyzer": opinion_analyzer}
 cancel_status = {"cancel": False}
 
 COLUMN_RENAMING = deepcopy(config["app"]["column_renaming"])
+SELECTED_SOURCES = opinion_analyzer.get_unique_field_values("business_id")
 SIMILARITY_THRESHOLD = config["thresholds"]["sentence_similarity"]
 
 
-def prepare_pipeline(model_name_or_path, selected_columns):
+def prepare_pipeline(model_name_or_path: str, dropdown_source_selection: list[str], selected_columns: list[str]):
     """
     Initializes the OpinionAnalyzer and updates the model used for analysis.
     Parameters:
@@ -50,6 +51,7 @@ def prepare_pipeline(model_name_or_path, selected_columns):
     """
 
     global COLUMN_RENAMING
+    global SELECTED_SOURCES
     global SIMILARITY_THRESHOLD
 
     COLUMN_RENAMING = {
@@ -57,6 +59,8 @@ def prepare_pipeline(model_name_or_path, selected_columns):
         for k, v in config["app"]["column_renaming"].items()
         if v in selected_columns
     }
+
+    SELECTED_SOURCES = dropdown_source_selection
 
     analyzer_dict["opinion_analyzer"] = OpinionAnalyzer(
         model_name_or_path=model_name_or_path
@@ -169,7 +173,7 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
         already_analyzed += 1
         progress_info = update_progress(row["num_matches"], already_analyzed, len(accumulated_df),
                                         canceled=cancel_status["cancel"])
-        
+
         yield accumulated_df, progress_info
 
 
@@ -240,14 +244,20 @@ with gr.Blocks() as interface:
     with gr.Row():
         with gr.Column():
             gr.Markdown("## Spezifiziere Einstellungen")
-            dropdown = gr.Dropdown(choices=MODELS, label="Wähle ein Model aus")
-            # Checkbox group for column selection
+            dropdown_model_selection = gr.Dropdown(choices=MODELS, label="Modellauswahl", info="Wähle ein Model aus")
+
+            dropdown_source_selection = gr.Dropdown(choices=opinion_analyzer.get_unique_field_values("business_id"),
+                                                    label="Quellenauswahl",
+                                                    info="Wähle die Geschäfte aus, die durchsucht werden sollen.",
+                                                    multiselect=True)
+
             column_selection = gr.CheckboxGroup(
                 choices=list(COLUMN_RENAMING.values()),
                 value=list(
                     COLUMN_RENAMING.values()
                 ),  # Default to selecting all columns
-                label="Wähle die anzuzeigenden Spalten aus",
+                label="Spaltenauswahl",
+                info="Wähle die Spalten, die in der Ergebnistabelle dargestellt werden sollen.",
             )
             # Slider for similarity threshold
             similarity_threshold_slider = gr.Slider(
@@ -255,12 +265,12 @@ with gr.Blocks() as interface:
                 maximum=1,
                 value=config["thresholds"]["sentence_similarity"],
                 step=0.01,
-                label="Schwellenwert für die semantischen Ähnlichkeit",
+                label="Schwellenwert für die semantischen Ähnlichkeit"
             )
             hyperparam_button = gr.Button("Einstellungen übernehmen")
             hyperparam_button.click(
                 fn=prepare_pipeline,  # Reset cancel status before starting
-                inputs=[dropdown, column_selection],
+                inputs=[dropdown_model_selection, dropdown_source_selection, column_selection],
                 outputs=[],
             )
 
@@ -278,7 +288,7 @@ with gr.Blocks() as interface:
                 cancel_button = gr.Button("Abbrechen")
 
             # Progress bar display
-            progress_display = gr.Textbox(label="Status der Argumentensuche wird hier angezeigt.", interactive=False,
+            progress_display = gr.Textbox(label="Status der Argumentensuche", interactive=False,
                                           lines=1, visible=False)
 
             # Output DataFrame
