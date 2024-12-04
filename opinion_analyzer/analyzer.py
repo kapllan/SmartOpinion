@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from pprint import pprint
 from typing import Literal
-
+from ast import literal_eval
 import chromadb
 import pandas as pd
 import spacy
@@ -311,7 +311,8 @@ class OpinionAnalyzer(ClientHandler):
         return results
 
     def find_arguments(
-            self, topic_text: str, rewrite=True, similarity_threshold: float = None, allowed_business_ids=list[str]
+            self, topic_text: str, rewrite=True, similarity_threshold: float = None,
+            allowed_business_ids: list[str] = ["alles"]
     ) -> list[dict]:
 
         if rewrite:
@@ -329,83 +330,84 @@ class OpinionAnalyzer(ClientHandler):
             )
 
             for argument_entry in semantic_search_results:
+                if "alles" in allowed_business_ids or argument_entry["business_id"] in allowed_business_ids:
 
-                result = self.categorize_argument(
-                    topic_text=topic_entry["new_sentence"],
-                    text_sample=argument_entry["new_sentence"],
-                    method="llm",
-                )
-
-                stance_label = adjust_labels(
-                    label=result["label"],
-                    score=result["score"],
-                    threshold=self.stance_class_threshold,
-                )
-                # if stance in ["pro", "contra", "neutral"]:
-
-                # Extracting the reasoning for the argument
-                reason = self.generate(
-                    prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
-                        # topic=segment,
-                        claim=argument_entry["new_sentence"],
-                        stance=stance_label,
-                        context=argument_entry["context"],
+                    result = self.categorize_argument(
+                        topic_text=topic_entry["new_sentence"],
+                        text_sample=argument_entry["new_sentence"],
+                        method="llm",
                     )
-                )
 
-                try:
-                    reason = literal_eval(reason)
-                except SyntaxError as se:
-                    print(f"SyntaxError: {se}")
-                    log.error(se)
-                    reason = {"reasoning_segment": "", "reasoning": ""}
-                if "reasoning_segment" not in reason.keys():
-                    log.error("No field 'reasoning_segment' in reasoning output")
-                if "reasoning" not in reason.keys():
-                    log.error("No field 'reasoning' in reasoning output")
-                # Extracting the person of the argument
-                person_info = {"person": "", "party": "", "canton": ""}
-                if stance_label in ["pro", "contra"]:
-                    person_info = self.generate(
-                        prompt=prompt_dict[config["prompts"]["extract_person"]].format(
+                    stance_label = adjust_labels(
+                        label=result["label"],
+                        score=result["score"],
+                        threshold=self.stance_class_threshold,
+                    )
+                    # if stance in ["pro", "contra", "neutral"]:
+
+                    # Extracting the reasoning for the argument
+                    reason = self.generate(
+                        prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
                             # topic=segment,
-                            sentence=argument_entry["original_sentence"],
-                            # stance=stance,
+                            claim=argument_entry["new_sentence"],
+                            stance=stance_label,
                             context=argument_entry["context"],
                         )
                     )
 
                     try:
-                        person_info = literal_eval(person_info)
+                        reason = literal_eval(reason)
                     except SyntaxError as se:
                         print(f"SyntaxError: {se}")
-                        person_info = {"person": "", "party": "", "canton": ""}
+                        log.error(se)
+                        reason = {"reasoning_segment": "", "reasoning": ""}
+                    if "reasoning_segment" not in reason.keys():
+                        log.error("No field 'reasoning_segment' in reasoning output")
+                    if "reasoning" not in reason.keys():
+                        log.error("No field 'reasoning' in reasoning output")
+                    # Extracting the person of the argument
+                    person_info = {"person": "", "party": "", "canton": ""}
+                    if stance_label in ["pro", "contra"]:
+                        person_info = self.generate(
+                            prompt=prompt_dict[config["prompts"]["extract_person"]].format(
+                                # topic=segment,
+                                sentence=argument_entry["original_sentence"],
+                                # stance=stance,
+                                context=argument_entry["context"],
+                            )
+                        )
 
-                entry = {
-                    "topic_original": topic_entry["original_sentence"],
-                    "topic_rewritten": topic_entry["new_sentence"],
-                    "argument_rewritten": argument_entry["new_sentence"],
-                    "argument_original": argument_entry["original_sentence"],
-                    "argument_reason": result["model_generation"],
-                    "person": person_info["person"],
-                    "party": person_info["party"],
-                    "canton": person_info["canton"],
-                    "context": argument_entry["context"],
-                    "label": stance_label,
-                    "score": result["score"],
-                    "reasoning": reason["reasoning"] if "reasoning" in reason else "",
-                    "reasoning_segment": (
-                        reason["reasoning_segment"]
-                        if "reasoning_segment" in reason
-                        else ""
-                    ),
-                    "similarity": argument_entry["similarity"],
-                    "model_name": self.model_name_or_path,
-                    "num_matches": len(semantic_search_results),
-                    "business_id": argument_entry["business_id"]
-                }
+                        try:
+                            person_info = literal_eval(person_info)
+                        except SyntaxError as se:
+                            print(f"SyntaxError: {se}")
+                            person_info = {"person": "", "party": "", "canton": ""}
 
-                yield entry
+                    entry = {
+                        "topic_original": topic_entry["original_sentence"],
+                        "topic_rewritten": topic_entry["new_sentence"],
+                        "argument_rewritten": argument_entry["new_sentence"],
+                        "argument_original": argument_entry["original_sentence"],
+                        "argument_reason": result["model_generation"],
+                        "person": person_info["person"],
+                        "party": person_info["party"],
+                        "canton": person_info["canton"],
+                        "context": argument_entry["context"],
+                        "label": stance_label,
+                        "score": result["score"],
+                        "reasoning": reason["reasoning"] if "reasoning" in reason else "",
+                        "reasoning_segment": (
+                            reason["reasoning_segment"]
+                            if "reasoning_segment" in reason
+                            else ""
+                        ),
+                        "similarity": argument_entry["similarity"],
+                        "model_name": self.model_name_or_path,
+                        "num_matches": len(semantic_search_results),
+                        "business_id": argument_entry["business_id"]
+                    }
+
+                    yield entry
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ import gradio as gr
 import pandas as pd
 
 from opinion_analyzer.analyzer import OpinionAnalyzer
-from opinion_analyzer.utils.helper import get_main_config
+from opinion_analyzer.utils.helper import get_main_config, has_values
 
 # Authentication configuration
 LOGIN_CREDENTIALS = [
@@ -100,9 +100,11 @@ def update_progress(total_num_matches: int, analyzed_matches: int, num_arguments
     >>> update_progress(5, 3)
     'Die Argumentsuche läuft! Es gibt insgesamt <PROGRESS_MAX> thematische Übereinstimmungen. Davon wurden bereits 3 auf Argumente überprüft. Es wurden 5 Argumente gefunden.'
     """
+
     if canceled:
         progress_info = "Die Argumentensuche wurde abgebrochen!"
-
+    elif total_num_matches == 0:
+        progress_info = "Es wurden keine Argumente gefunden."
     elif total_num_matches == analyzed_matches and total_num_matches > 0:
         progress_info = (
             f"Die Argumentensuche ist abgeschlossen! Es gibt insgesamt {total_num_matches} thematische Übereinstimmungen. "
@@ -144,8 +146,13 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
     # Simulate finding arguments incrementally for the sake of demonstration
     print("Using this model: ", analyzer_dict["opinion_analyzer"].model_name_or_path)
     arguments = analyzer_dict["opinion_analyzer"].find_arguments(
-        topic_text=input_text, similarity_threshold=similarity_threshold
+        topic_text=input_text, similarity_threshold=similarity_threshold, allowed_business_ids=SELECTED_SOURCES
     )
+
+    matches_found, _ = has_values(arguments)
+    if not matches_found:
+        progress_info = update_progress(0, 0, len(accumulated_df))
+        yield accumulated_df, progress_info
 
     neutral_count = 0
     already_analyzed = 0

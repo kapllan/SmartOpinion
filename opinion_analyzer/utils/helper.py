@@ -3,6 +3,7 @@ import re
 from ast import literal_eval
 from pathlib import Path
 from typing import Union, Literal
+from itertools import tee
 import pandas as pd
 import spacy
 import yaml
@@ -54,6 +55,30 @@ def get_main_config() -> dict:
     return config
 
 
+def has_values(iterator):
+    """
+    Check whether an iterator has any values and return a duplicate.
+
+    :param iterator: An iterator to be checked for values.
+    :type iterator: iterator
+    :return: A tuple containing a boolean indicating if the iterator has values,
+             and a duplicate of the original iterator.
+    :rtype: tuple (bool, iterator)
+
+    This function duplicates the given iterator and checks if the
+    original iterator has any values by trying to get the next item.
+    It then returns a boolean indicating the presence of values along
+    with a duplicate iterator to continue iteration without exhausting
+    the original.
+    """
+    it1, it2 = tee(iterator)  # Duplicate the iterator
+    try:
+        next(it1)  # Check if the first duplicate has any values
+        return True, it2  # Return the second duplicate to continue iterating
+    except StopIteration:
+        return False, it2
+
+
 def extract_text_from_pdf(pdf_file: str | Path) -> list[str]:
     """Goes through all the pages of a PDF file and extracts the text using OCR.
 
@@ -92,7 +117,7 @@ def get_model_client_config() -> dict:
 
 
 def concatenate_images_vertically(
-    images: Union[list[Image.Image], list[Union[str, os.PathLike]], str, os.PathLike]
+        images: Union[list[Image.Image], list[Union[str, os.PathLike]], str, os.PathLike]
 ) -> Image.Image:
     """
     Concatenate multiple images vertically.
@@ -220,8 +245,8 @@ def find_ambiguous_words(text: Union[str, Doc]) -> list[str]:
     for w in text:
         if spacy.explain(w.tag_) not in tags_to_ignore:
             if (
-                re.search(r"(pronoun|pronominal)", spacy.explain(w.tag_))
-                and w.text not in ambiguous_words
+                    re.search(r"(pronoun|pronominal)", spacy.explain(w.tag_))
+                    and w.text not in ambiguous_words
             ):
                 ambiguous_words.append(w.text)
     return ambiguous_words
@@ -248,11 +273,11 @@ def find_ambiguous_sentence(text: Union[str, Doc]) -> list[str]:
 
 
 def make_sentences_concrete(
-    text: Union[str, Doc],
-    client_handler,
-    expand_sentence: str,
-    method: Literal["llm", "context"] = "llm",
-    check_ambiguity: bool = False,
+        text: Union[str, Doc],
+        client_handler,
+        expand_sentence: str,
+        method: Literal["llm", "context"] = "llm",
+        check_ambiguity: bool = False,
 ) -> list[str]:
     """
     Disambiguates and rewrites ambiguous sentences in a given text.
@@ -281,13 +306,13 @@ def make_sentences_concrete(
         if sent.text in ambiguous_sentences or check_ambiguity:
             ambiguous_words = ", ".join(find_ambiguous_words(sent))
             if method == "llm":
-                context = " ".join(all_sentences[n - 20 : n + 20])
+                context = " ".join(all_sentences[n - 20: n + 20])
                 prompt = expand_sentence.format(
                     sentence=sent.text, context=context, ambiguous_words=ambiguous_words
                 )
                 new_sentence = client_handler.generate(prompt)
             elif method == "context":
-                new_sentence = " ".join(all_sentences[n - 2 : n + 2])
+                new_sentence = " ".join(all_sentences[n - 2: n + 2])
             elif method is None:
                 new_sentence = sent.text
             else:
@@ -295,7 +320,7 @@ def make_sentences_concrete(
             new_sentences.append(new_sentence)
         else:
             new_sentences.append(sent.text)
-        general_context = " ".join(all_sentences[n - 5 : n + 5])
+        general_context = " ".join(all_sentences[n - 5: n + 5])
         contexts.append(general_context)
 
     results = [
