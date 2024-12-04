@@ -420,7 +420,7 @@ class OpinionAnalyzer(ClientHandler):
     def find_arguments(
             self, topic_text: str, rewrite=True, similarity_threshold: float = None,
             allowed_business_ids: list[str] = [config["app"]["place_hold_all_sources"]],
-            precheck: bool = False
+            precheck: bool = False, method: Literal["llm", "finetuned"] = "finetuned",
     ) -> list[dict]:
 
         if rewrite:
@@ -441,7 +441,7 @@ class OpinionAnalyzer(ClientHandler):
                 if config["app"]["place_hold_all_sources"] in allowed_business_ids or argument_entry[
                     "business_id"] in allowed_business_ids:
 
-                    if precheck:
+                    if precheck or method == "finetuned":
                         stance_precheck = self.categorize_argument(
                             topic_text=topic_entry["new_sentence"],
                             text_sample=argument_entry["new_sentence"],
@@ -450,11 +450,16 @@ class OpinionAnalyzer(ClientHandler):
 
                     if (precheck and stance_precheck["score"] >= self.stance_class_threshold) or not precheck:
 
-                        result = self.categorize_argument(
-                            topic_text=topic_entry["new_sentence"],
-                            text_sample=argument_entry["new_sentence"],
-                            method="llm",
-                        )
+                        if method == "finetuned":
+                            result = stance_precheck
+                        elif method == "llm":
+                            result = self.categorize_argument(
+                                topic_text=topic_entry["new_sentence"],
+                                text_sample=argument_entry["new_sentence"],
+                                method="llm",
+                            )
+                        else:
+                            raise "You can choose only between the following methods: 'llm' or 'finetuned'."
 
                         stance_label = adjust_labels(
                             label=result["label"],
@@ -508,6 +513,8 @@ class OpinionAnalyzer(ClientHandler):
                             "num_matches": len(semantic_search_results),
                             "business_id": argument_entry["business_id"]
                         }
+
+                        pprint(entry)
 
                         yield entry
 

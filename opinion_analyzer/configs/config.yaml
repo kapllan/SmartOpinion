@@ -19,7 +19,7 @@ prompts:
   extract_person: extract_person
 thresholds:
     sentence_similarity: 0.8
-    stance_classification: 0.9
+    stance_classification: 0.8
 database:
   chromadb: smart_opinion_default_collection
 app:
@@ -29,8 +29,8 @@ app:
     context: Kontext
     argument_reason: Modellbegründung für gewählte Haltung
     argument_original: Meinung
-    # reasoning: Begründung für die Meinung
-    reasoning_segment: Begründung für die Meinung
+    reasoning: Begründung für die Meinung
+    # reasoning_segment: Begründung für die Meinung
     person: Person
     party: Partei
     canton: Kanton
@@ -39,6 +39,7 @@ app:
   place_hold_all_sources: alles
   neutral_limit: 3
   pre_check: false
+  stance_classification_method: finetuned
 
 
 
