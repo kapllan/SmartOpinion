@@ -15,7 +15,7 @@ metrics:
 prompts:
   stance_detection: categorize_argument_zero_shot_cot
   make_sentence_concrete: make_sentence_concrete_1
-  find_reasoning: find_reasoning
+  find_reasoning: find_reasoning_4
   extract_person: extract_person
 thresholds:
     sentence_similarity: 0.8
@@ -38,6 +38,7 @@ app:
     model_name: LLM
   place_hold_all_sources: alles
   neutral_limit: 3
+  pre_check: false
 
 
 

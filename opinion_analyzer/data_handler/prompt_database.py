@@ -108,10 +108,11 @@ categorize_argument_zero_shot_cot = """
             Du bist ein Experte in Sachen Argumentanalyse.
             Ich gebe dir nun einen Textauszug, der ein Thema beschreibt.
             Danach gebe ich dir einen Textauszug, der eventuell ein Argument zum Thema darstellt.
-            Du sollst entscheiden, ob der Textauszug ein Pro- oder ein Contra-Argument darstellt oder keins von beiden (neutral).
+            Du sollst entscheiden, ob der Textauszug ein explizites Pro- oder ein Contra-Argument darstellt oder keins von beiden (neutral).
             Du darfst also nur eines von folgenden Labels zurückgeben: Pro, Contra, Neutral.
             Bevor du das Label angibst, musst du immer vorher eine eine Begründung für deine Entscheidung liefern.
             Also erst die Begründung und darauf aufbauend das Label angeben.
+            Wichtig ist, dass du deine Entscheidung nur auf explizite Angaben im Textauszug fällst und nicht zu viel interpretierst. 
             
             Hier einige Beispiele:
 
@@ -208,7 +209,6 @@ is_debatable = """Du bist ein Experte in Sachen Argumentanalyse.
                 # Der Textauszug lautet: {text}           
             """
 
-
 make_sentence_concrete = """
                     Du bist ein Kommunikatonsexperte.
                     Ich gebe dir einen Satz und einen Kontext, in dem der Satz vorkommt.
@@ -283,18 +283,19 @@ find_main_points = """
                     {text}
                     """
 
-find_reasoning = """
+find_reasoning_1 = """
                 Es geht um folgende Grundaussage:
                 
                 {topic}
                 
-                Ein Analyse hat gesagt, dass folgender Auszug ein {stance}-Argument ist:
+                Ein Argumentanalyse hat ergeben, dass folgender Auszug ein {stance}-Haltung zu dieser Grundaussage darstellt:
                 
                 {claim}
                 
                 Ich gebe dir nun einen breiten Kontext für den genannten Auszug.
-                Extrahiere aus dem Kontext die Begründung für das {stance}-Argument.
+                Extrahiere aus dem Kontext die Begründung, welche die {stance}-Haltung zur Grundaussage untermauert.
                 Sofern du eine Begründung finden kannst, extrahiere sie einfach nur und verändere nicht den Wortlaut.
+                Wichtig: Extrahiere nur eine Begründung, sofern der Kontext auch wirklich eine Begründung für die {stance}-Haltung liefert.
                 Wenn du keine Begründung finden kannst, sag einfach: Keine Begründung.
                 
                 Hier ist der Kontext:
@@ -302,12 +303,12 @@ find_reasoning = """
                 {context}
                 """
 
-find_reasoning = """
+find_reasoning_2 = """
                 Ich gebe dir folgenden Auszug:
 
                 {claim}
 
-                Nachfolgend gebe ich dir den bereiten Kontext, in dem der Auszug vorkommt.
+                Nachfolgend gebe ich dir den bereiten Kontext, in dem der Auszug vorkommt:
                 
                 {context}
                 
@@ -327,6 +328,73 @@ find_reasoning = """
                     "reasoning":""
                 }}
                 
+                """
+
+find_reasoning_3 = """
+                Du bist ein Experte in Sachen Argumentanalyse.
+                
+                Ich gebe dir folgende Grundaussage:
+
+                {topic}
+                
+                Ein Argumentanalyse hat ergeben, dass folgender Auszug ein {stance}-Haltung zu dieser Grundaussage darstellt:
+                
+                {claim}
+
+                Nachfolgend gebe ich dir den bereiten Kontext, in dem der Auszug vorkommt:
+
+                {context}
+                
+                
+                Extrahiere aus dem Kontext die Begründung, welche die {stance}-Haltung zur Grundaussage untermauert 
+                und formuliere die Begründung prägnant in eigenen Worten. Strukturiere deine Antwort als JSON:
+
+                {{
+                    "reasoning_segment":"Extrahierter Abschnitt mit der Begründung.", 
+                    "reasoning":"Begründung in eigenen Worten."
+                }}
+                
+                Wichtig: Extrahiere nur eine Begründung, sofern der Kontext auch wirklich eine Begründung für die {stance}-Haltung liefert.
+
+                Wenn du keinerlei Begründugn findest, gib einfach leere Strings zurück, wie folgt:
+
+                {{
+                    "reasoning_segment":"", 
+                    "reasoning":""
+                }}
+
+                """
+
+find_reasoning_4 = """
+                Du bist ein Experte in Sachen Argumentanalyse.
+
+                Ich gebe dir folgende Grundaussage:
+
+                {topic}
+
+                Nachfolgend gebe ich dir einen bereiten Kontext:
+
+                {context}
+
+                Suche und extrahiere einen Abschnitt im Kontext, welcher ein sehr gute Begründung für eine 
+                {stance}-Haltung zur vorhin genannten Grundaussage liefert 
+                und formuliere diese Begründung prägnant in eigenen Worten. 
+                Strukturiere deine Antwort als JSON:
+
+                {{
+                    "reasoning_segment":"Extrahierter Abschnitt mit der Begründung.", 
+                    "reasoning":"Begründung in eigenen Worten."
+                }}
+
+                Wichtig: Extrahiere nur eine Begründung, sofern der Kontext auch wirklich eine gute und explizite Begründung für eine {stance}-Haltung gegenüber der Grundaussage liefert.
+
+                Wenn du keinerlei Begründugn findest, gib einfach leere Strings zurück, wie folgt:
+
+                {{
+                    "reasoning_segment":"", 
+                    "reasoning":""
+                }}
+
                 """
 
 extract_person = """
@@ -366,7 +434,10 @@ prompt_dict = {
     "make_sentence_concrete_2": make_sentence_concrete_2,
     "find_main_points": find_main_points,
     "is_debatable": is_debatable,
-    "find_reasoning": find_reasoning,
+    "find_reasoning_1": find_reasoning_1,
+    "find_reasoning_2": find_reasoning_2,
+    "find_reasoning_3": find_reasoning_3,
+    "find_reasoning_4": find_reasoning_4,
     "extract_person": extract_person,
 }
 if __name__ == "__main__":

@@ -158,7 +158,8 @@ def perform_argument_mining(input_text: str, similarity_threshold: float = None)
     # Simulate finding arguments incrementally for the sake of demonstration
     print("Using this model: ", analyzer_dict["opinion_analyzer"].model_name_or_path)
     arguments = analyzer_dict["opinion_analyzer"].find_arguments(
-        topic_text=input_text, similarity_threshold=similarity_threshold, allowed_business_ids=SELECTED_SOURCES
+        topic_text=input_text, similarity_threshold=similarity_threshold, allowed_business_ids=SELECTED_SOURCES,
+        precheck=config["app"]["pre_check"]
     )
 
     matches_found, _ = has_values(arguments)

@@ -16,6 +16,9 @@ from bs4 import BeautifulSoup
 from chromadb.utils import embedding_functions
 from sentence_transformers import SentenceTransformer, util
 from transformers import pipeline
+import nltk
+from nltk.tokenize import sent_tokenize
+from difflib import SequenceMatcher
 
 from opinion_analyzer.data_handler.prompt_database import prompt_dict
 from opinion_analyzer.inference.client_handler import ClientHandler
@@ -29,11 +32,58 @@ from opinion_analyzer.utils.helper import (
 )
 from opinion_analyzer.utils.log import get_logger
 
+nltk.download('punkt_tab')
 nlp = spacy.load("de_dep_news_trf")
 
 config = get_main_config()
 
 log = get_logger()
+
+
+def find_matching_sentence(string: str, context: str) -> str:
+    """
+    Find the sentence in the context that is most similar to the given string.
+
+    This function splits the context into sentences and uses a simple similarity
+    measurement (Levenshtein-like) to find the most similar sentence.
+
+    :param string: The sentence to compare against the context.
+    :type string: str
+    :param context: The block of text from which to find the most similar sentence.
+    :type context: str
+    :return: The sentence from the context that is most similar to the string.
+    :rtype: str
+
+    :Example:
+
+    ::
+
+        context = \"\"\"
+        Python is an interpreted, high-level and general-purpose programming language.
+        Python's design philosophy emphasizes code readability with its notable use of significant whitespace.
+        \"\"\"
+
+        sentence = "Python is easy to read."
+        result = find_matching_sentence(sentence, context)
+        print(result)
+    """
+    # Tokenize the context into sentences
+    sentences = sent_tokenize(context)
+
+    # Initialize variables to store the best match
+    highest_similarity = -1
+    best_match = ""
+
+    for sentence in sentences:
+        # Calculate a simple similarity ratio using SequenceMatcher
+        similarity = SequenceMatcher(None, string, sentence).ratio()
+
+        # Update best match if we find a higher similarity score
+        if similarity > highest_similarity:
+            highest_similarity = similarity
+            best_match = sentence
+
+    return best_match
 
 
 def prepare_documents(
@@ -208,6 +258,61 @@ class OpinionAnalyzer(ClientHandler):
 
         return output
 
+    def extract_evidence(self, topic: str, claim: str, stance: str, context: str):
+        """
+        Extracts evidence based on a given topic, claim, stance, and context. Uses a configured
+        prompt to generate evidence and attempts to parse it.
+
+        :param topic: The topic related to the claim.
+        :type topic: str
+        :param claim: The claim for which evidence is being sought.
+        :type claim: str
+        :param stance: The stance towards the claim.
+        :type stance: str
+        :param context: Additional context to aid evidence extraction.
+        :type context: str
+
+        :return: A dictionary containing the extracted reasoning segment and reasoning.
+        :rtype: dict
+
+        :raises SyntaxError: If the generated evidence cannot be parsed into a dictionary.
+
+        This function logs errors when the generated output does not contain the expected fields,
+        'reasoning_segment' and 'reasoning'.
+        """
+
+        if config["prompts"]["find_reasoning"] == "find_reasoning_3":
+            evidence = self.generate(
+                prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
+                    topic=topic,
+                    claim=claim,
+                    stance=stance,
+                    context=context
+                )
+            )
+        elif config["prompts"]["find_reasoning"] == "find_reasoning_4":
+            evidence = self.generate(
+                prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
+                    topic=topic,
+                    #claim=claim,
+                    stance=stance,
+                    context=context
+                )
+            )
+        try:
+            evidence = literal_eval(evidence)
+        except SyntaxError as se:
+            print(f"SyntaxError: {se}")
+            log.error(se)
+            evidence = {"reasoning_segment": "", "reasoning": ""}
+        if "reasoning_segment" not in evidence.keys():
+            log.error("No field 'reasoning_segment' in reasoning output")
+        if "reasoning" not in evidence.keys():
+            log.error("No field 'reasoning' in reasoning output")
+        reasoning_segment = find_matching_sentence(string=evidence["reasoning_segment"], context=context)
+        evidence["reasoning_segment"] = reasoning_segment
+        return evidence
+
     def is_debatable(self, text: str) -> str:
         prompt = prompt_dict["is_debatable"]
         prompt = prompt.format(text=text)
@@ -314,7 +419,8 @@ class OpinionAnalyzer(ClientHandler):
 
     def find_arguments(
             self, topic_text: str, rewrite=True, similarity_threshold: float = None,
-            allowed_business_ids: list[str] = [config["app"]["place_hold_all_sources"]]
+            allowed_business_ids: list[str] = [config["app"]["place_hold_all_sources"]],
+            precheck: bool = False
     ) -> list[dict]:
 
         if rewrite:
@@ -335,13 +441,14 @@ class OpinionAnalyzer(ClientHandler):
                 if config["app"]["place_hold_all_sources"] in allowed_business_ids or argument_entry[
                     "business_id"] in allowed_business_ids:
 
-                    stance_precheck = self.categorize_argument(
-                        topic_text=topic_entry["new_sentence"],
-                        text_sample=argument_entry["new_sentence"],
-                        method="finetuned",
-                    )
+                    if precheck:
+                        stance_precheck = self.categorize_argument(
+                            topic_text=topic_entry["new_sentence"],
+                            text_sample=argument_entry["new_sentence"],
+                            method="finetuned",
+                        )
 
-                    if stance_precheck["score"] >= self.stance_class_threshold:
+                    if (precheck and stance_precheck["score"] >= self.stance_class_threshold) or not precheck:
 
                         result = self.categorize_argument(
                             topic_text=topic_entry["new_sentence"],
@@ -355,30 +462,15 @@ class OpinionAnalyzer(ClientHandler):
                             threshold=self.stance_class_threshold,
                         )
 
-                        # Extracting the reasoning for the argument
-                        reason = self.generate(
-                            prompt=prompt_dict[config["prompts"]["find_reasoning"]].format(
-                                # topic=segment,
-                                claim=argument_entry["new_sentence"],
-                                stance=stance_label,
-                                context=argument_entry["context"],
-                            )
-                        )
+                        evidence = self.extract_evidence(
+                            topic=topic_entry["new_sentence"],
+                            claim=argument_entry["new_sentence"],
+                            stance=stance_label,
+                            context=argument_entry["context"])
 
-                        try:
-                            reason = literal_eval(reason)
-                        except SyntaxError as se:
-                            print(f"SyntaxError: {se}")
-                            log.error(se)
-                            reason = {"reasoning_segment": "", "reasoning": ""}
-                        if "reasoning_segment" not in reason.keys():
-                            log.error("No field 'reasoning_segment' in reasoning output")
-                        if "reasoning" not in reason.keys():
-                            log.error("No field 'reasoning' in reasoning output")
-                        # Extracting the person of the argument
-                        person_info = {"person": "", "party": "", "canton": ""}
+                        person_information = {"person": "", "party": "", "canton": ""}
                         if stance_label in ["pro", "contra"]:
-                            person_info = self.generate(
+                            person_information = self.generate(
                                 prompt=prompt_dict[config["prompts"]["extract_person"]].format(
                                     # topic=segment,
                                     sentence=argument_entry["original_sentence"],
@@ -388,10 +480,10 @@ class OpinionAnalyzer(ClientHandler):
                             )
 
                             try:
-                                person_info = literal_eval(person_info)
+                                person_information = literal_eval(person_information)
                             except SyntaxError as se:
                                 print(f"SyntaxError: {se}")
-                                person_info = {"person": "", "party": "", "canton": ""}
+                                person_information = {"person": "", "party": "", "canton": ""}
 
                         entry = {
                             "topic_original": topic_entry["original_sentence"],
@@ -399,16 +491,16 @@ class OpinionAnalyzer(ClientHandler):
                             "argument_rewritten": argument_entry["new_sentence"],
                             "argument_original": argument_entry["original_sentence"],
                             "argument_reason": result["model_generation"],
-                            "person": person_info["person"],
-                            "party": person_info["party"],
-                            "canton": person_info["canton"],
+                            "person": person_information["person"],
+                            "party": person_information["party"],
+                            "canton": person_information["canton"],
                             "context": argument_entry["context"],
                             "label": stance_label,
                             "score": result["score"],
-                            "reasoning": reason["reasoning"] if "reasoning" in reason else "",
+                            "reasoning": evidence["reasoning"] if "reasoning" in evidence else "",
                             "reasoning_segment": (
-                                reason["reasoning_segment"]
-                                if "reasoning_segment" in reason
+                                evidence["reasoning_segment"]
+                                if "reasoning_segment" in evidence
                                 else ""
                             ),
                             "similarity": argument_entry["similarity"],
