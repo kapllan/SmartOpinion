@@ -397,5 +397,5 @@ with gr.Blocks() as interface:
             )
 # Launch the app with authentication
 if __name__ == "__main__":
-    # interface.launch(auth=LOGIN_CREDENTIALS, share=True)
-    interface.launch(share=True)
+    interface.launch(auth=LOGIN_CREDENTIALS, share=True)
+    # interface.launch(share=True)
