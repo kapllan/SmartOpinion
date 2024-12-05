@@ -16,8 +16,6 @@ from bs4 import BeautifulSoup
 from chromadb.utils import embedding_functions
 from sentence_transformers import SentenceTransformer, util
 from transformers import pipeline
-import nltk
-from nltk.tokenize import sent_tokenize
 from difflib import SequenceMatcher
 
 from opinion_analyzer.data_handler.prompt_database import prompt_dict
@@ -32,7 +30,7 @@ from opinion_analyzer.utils.helper import (
 )
 from opinion_analyzer.utils.log import get_logger
 
-nltk.download('punkt_tab')
+
 nlp = spacy.load("de_dep_news_trf")
 
 config = get_main_config()
@@ -68,7 +66,7 @@ def find_matching_sentence(string: str, context: str) -> str:
         print(result)
     """
     # Tokenize the context into sentences
-    sentences = sent_tokenize(context)
+    sentences = [sent.text for sent in nlp(context).sents]
 
     # Initialize variables to store the best match
     highest_similarity = -1
