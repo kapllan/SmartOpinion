@@ -30,7 +30,6 @@ from opinion_analyzer.utils.helper import (
 )
 from opinion_analyzer.utils.log import get_logger
 
-
 nlp = spacy.load("de_dep_news_trf")
 
 config = get_main_config()
@@ -173,6 +172,8 @@ class OpinionAnalyzer(ClientHandler):
             )
 
         self.sent_model = SentenceTransformer(config["models"]["sentence_similarity"])
+
+        self.analyzed_topics = set()
 
     def segment_argument_text(self, text: str, prompt: str = None):
         if prompt is None:
@@ -410,7 +411,8 @@ class OpinionAnalyzer(ClientHandler):
                     "original_sentence": doc["metadata"]["original_sentence"],
                     "context": doc["metadata"]["context"],
                     "similarity": round(1 - doc["distance"], 2),
-                    "business_id": doc["metadata"]["business_id"]
+                    "business_id": doc["metadata"]["business_id"],
+                    "filename": doc["metadata"]["filename"]
                 }
             )
 
@@ -422,6 +424,8 @@ class OpinionAnalyzer(ClientHandler):
             precheck: bool = False, method: Literal["llm", "finetuned"] = "finetuned",
     ) -> list[dict]:
 
+        anlaysis_status = dict()
+
         if rewrite:
             print("Rewriting topic")
             topic_text_prepared = prepare_documents(
@@ -431,91 +435,102 @@ class OpinionAnalyzer(ClientHandler):
             )
 
         for topic_entry in topic_text_prepared.to_dict(orient="records"):
+            if topic_entry["new_sentence"] not in anlaysis_status.keys():
+                anlaysis_status[topic_entry["new_sentence"]] = 0
+
+        for topic_entry in topic_text_prepared.to_dict(orient="records"):
             semantic_search_results = self.prepare_argument_text(
                 query=topic_entry["new_sentence"],
                 similarity_threshold=similarity_threshold,
             )
 
-            for argument_entry in semantic_search_results:
-                if config["app"]["place_hold_all_sources"] in allowed_business_ids or argument_entry[
-                    "business_id"] in allowed_business_ids:
+            for idx, argument_entry in enumerate(semantic_search_results):
+                if anlaysis_status[topic_entry["new_sentence"]] < config["app"]["neutral_limit"]:
+                    if config["app"]["place_hold_all_sources"] in allowed_business_ids or argument_entry[
+                        "business_id"] in allowed_business_ids:
 
-                    if precheck or method == "finetuned":
-                        stance_precheck = self.categorize_argument(
-                            topic_text=topic_entry["new_sentence"],
-                            text_sample=argument_entry["new_sentence"],
-                            method="finetuned",
-                        )
-
-                    if (precheck and stance_precheck["score"] >= self.stance_class_threshold) or not precheck:
-
-                        if method == "finetuned":
-                            result = stance_precheck
-                        elif method == "llm":
-                            result = self.categorize_argument(
+                        if precheck or method == "finetuned":
+                            stance_precheck = self.categorize_argument(
                                 topic_text=topic_entry["new_sentence"],
                                 text_sample=argument_entry["new_sentence"],
-                                method="llm",
+                                method="finetuned",
                             )
-                        else:
-                            raise "You can choose only between the following methods: 'llm' or 'finetuned'."
 
-                        stance_label = adjust_labels(
-                            label=result["label"],
-                            score=result["score"],
-                            threshold=self.stance_class_threshold,
-                        )
+                        if (precheck and stance_precheck["score"] >= self.stance_class_threshold) or not precheck:
 
-                        evidence = self.extract_evidence(
-                            topic=topic_entry["new_sentence"],
-                            claim=argument_entry["new_sentence"],
-                            stance=stance_label,
-                            context=argument_entry["context"])
-
-                        person_information = {"person": "", "party": "", "canton": ""}
-                        if stance_label in ["pro", "contra"]:
-                            person_information = self.generate(
-                                prompt=prompt_dict[config["prompts"]["extract_person"]].format(
-                                    # topic=segment,
-                                    sentence=argument_entry["original_sentence"],
-                                    # stance=stance,
-                                    context=argument_entry["context"],
+                            if method == "finetuned":
+                                result = stance_precheck
+                            elif method == "llm":
+                                result = self.categorize_argument(
+                                    topic_text=topic_entry["new_sentence"],
+                                    text_sample=argument_entry["new_sentence"],
+                                    method="llm",
                                 )
+                            else:
+                                raise "You can choose only between the following methods: 'llm' or 'finetuned'."
+
+                            stance_label = adjust_labels(
+                                label=result["label"],
+                                score=result["score"],
+                                threshold=self.stance_class_threshold,
                             )
 
-                            try:
-                                person_information = literal_eval(person_information)
-                            except SyntaxError as se:
-                                print(f"SyntaxError: {se}")
-                                person_information = {"person": "", "party": "", "canton": ""}
+                            person_information = {"person": "", "party": "", "canton": ""}
+                            evidence = {"reason": "", "reasoning_segment": ""}
 
-                        entry = {
-                            "topic_original": topic_entry["original_sentence"],
-                            "topic_rewritten": topic_entry["new_sentence"],
-                            "argument_rewritten": argument_entry["new_sentence"],
-                            "argument_original": argument_entry["original_sentence"],
-                            "argument_reason": result["model_generation"],
-                            "person": person_information["person"],
-                            "party": person_information["party"],
-                            "canton": person_information["canton"],
-                            "context": argument_entry["context"],
-                            "label": stance_label,
-                            "score": result["score"],
-                            "reasoning": evidence["reasoning"] if "reasoning" in evidence else "",
-                            "reasoning_segment": (
-                                evidence["reasoning_segment"]
-                                if "reasoning_segment" in evidence
-                                else ""
-                            ),
-                            "similarity": argument_entry["similarity"],
-                            "model_name": self.model_name_or_path,
-                            "num_matches": len(semantic_search_results),
-                            "business_id": argument_entry["business_id"]
-                        }
+                            if stance_label in ["pro", "contra"]:
+                                evidence = self.extract_evidence(
+                                    topic=topic_entry["new_sentence"],
+                                    claim=argument_entry["new_sentence"],
+                                    stance=stance_label,
+                                    context=argument_entry["context"])
 
-                        pprint(entry)
+                                person_information = self.generate(
+                                    prompt=prompt_dict[config["prompts"]["extract_person"]].format(
+                                        # topic=segment,
+                                        sentence=argument_entry["original_sentence"],
+                                        # stance=stance,
+                                        context=argument_entry["context"],
+                                    )
+                                )
 
-                        yield entry
+                                try:
+                                    person_information = literal_eval(person_information)
+                                except SyntaxError as se:
+                                    print(f"SyntaxError: {se}")
+                                    person_information = {"person": "", "party": "", "canton": ""}
+                            else:
+                                anlaysis_status[topic_entry["new_sentence"]] += 1
+
+                            entry = {
+                                "topic_original": topic_entry["original_sentence"],
+                                "topic_rewritten": topic_entry["new_sentence"],
+                                "argument_rewritten": argument_entry["new_sentence"],
+                                "argument_original": argument_entry["original_sentence"],
+                                "argument_reason": result["model_generation"],
+                                "person": person_information["person"],
+                                "party": person_information["party"],
+                                "canton": person_information["canton"],
+                                "context": argument_entry["context"],
+                                "label": stance_label,
+                                "score": result["score"],
+                                "reasoning": evidence["reasoning"] if "reasoning" in evidence else "",
+                                "reasoning_segment": (
+                                    evidence["reasoning_segment"]
+                                    if "reasoning_segment" in evidence
+                                    else ""
+                                ),
+                                "similarity": argument_entry["similarity"],
+                                "model_name": self.model_name_or_path,
+                                "num_matches": len(semantic_search_results),
+                                "num_arguments_analyzed": idx,
+                                "business_id": argument_entry["business_id"],
+                                "filename": argument_entry["filename"],
+                                "anlaysis_status": anlaysis_status,
+                                "all_arguments_analyzed": idx+1 == len(semantic_search_results)
+                            }
+
+                            yield entry
 
 
 if __name__ == "__main__":

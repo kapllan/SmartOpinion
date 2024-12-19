@@ -7,7 +7,7 @@ import gradio as gr
 import pandas as pd
 
 from opinion_analyzer.analyzer import OpinionAnalyzer
-from opinion_analyzer.utils.helper import get_main_config, has_values
+from opinion_analyzer.utils.helper import get_main_config, has_values, escape_xlsx_string, is_iterator_finished
 
 # Authentication configuration
 LOGIN_CREDENTIALS = [
@@ -98,19 +98,13 @@ def filter_columns(dataframe: pd.DataFrame, selected_columns: list[str]) -> pd.D
     :rtype: pd.DataFrame
     """
 
-    """global COLUMN_RENAMING
-
-    COLUMN_RENAMING = {
-        k: v
-        for k, v in config["app"]["column_renaming"].items()
-        if v in selected_columns
-    }"""
     if selected_columns:
         return dataframe[selected_columns]
     return dataframe
 
 
-def update_progress(total_num_matches: int, analyzed_matches: int, num_arguments: int, canceled=False) -> str:
+def update_progress(topic:str, total_num_matches: int, analyzed_matches: int, num_arguments: int, canceled=False,
+                    neutral_limit=None, exhausted=False) -> str:
     """
     Updates the progress bar with the current analysis status.
 
@@ -126,31 +120,38 @@ def update_progress(total_num_matches: int, analyzed_matches: int, num_arguments
     'Die Argumentsuche läuft! Es gibt insgesamt <PROGRESS_MAX> thematische Übereinstimmungen. Davon wurden bereits 3 auf Argumente überprüft. Es wurden 5 Argumente gefunden.'
     """
 
-    if canceled:
+    if exhausted:
         progress_info = (
-            f"Die Argumentensuche wurde abgebrochen! Es gibt insgesamt {total_num_matches} thematische Übereinstimmungen. "
-            f"Davon wurden bereits {analyzed_matches} auf Argumente überprüft. "
+            f"Die Argumentensuche ist abgeschlossen! Zum Thema \"{topic}\" gibt es insgesamt {total_num_matches} thematische Übereinstimmungen. "
+            f"Insgesamt wurden bereits {analyzed_matches} auf Argumente überprüft. "
             f"Es wurden {num_arguments} Argumente gefunden."
         )
-    elif analyzed_matches == config["app"]["neutral_limit"] and num_arguments == 0:
+
+    elif canceled:
+        progress_info = (
+            f"Die Argumentensuche wurde abgebrochen! Zum Thema \"{topic}\" gibt es insgesamt {total_num_matches} thematische Übereinstimmungen. "
+            f"Insgesamt wurden bereits {analyzed_matches} auf Argumente überprüft. "
+            f"Es wurden {num_arguments} Argumente gefunden."
+        )
+    elif isinstance(neutral_limit, int) and neutral_limit >= config["app"]["neutral_limit"]:
         progress_info = (
             f"Die Argumentensuche wurde vorzeitig beendet, da semantisch übereinstimmenden Kontexte {config['app']['neutral_limit']}-mal hintereinander keine Pro- oder Contra-Argumente geliefert haben. "
-            f"Es gibt insgesamt {total_num_matches} thematische Übereinstimmungen. "
-            f"Davon wurden bereits {analyzed_matches} auf Argumente überprüft. "
+            f" Zum Thema \"{topic}\" gibt es insgesamt {total_num_matches} thematische Übereinstimmungen. "
+            f"Insgesamt wurden bereits {analyzed_matches} auf Argumente überprüft. "
             f"Es wurden {num_arguments} Argumente gefunden."
         )
     elif total_num_matches == 0:
         progress_info = "Es wurden keine Argumente gefunden."
     elif total_num_matches == analyzed_matches and total_num_matches > 0:
         progress_info = (
-            f"Die Argumentensuche ist abgeschlossen! Es gibt insgesamt {total_num_matches} thematische Übereinstimmungen. "
-            f"Davon wurden bereits {analyzed_matches} auf Argumente überprüft. "
+            f"Die Argumentensuche ist abgeschlossen!  Zum Thema \"{topic}\" gibt es insgesamt {total_num_matches} thematische Übereinstimmungen. "
+            f"Insgesamt wurden bereits {analyzed_matches} auf Argumente überprüft. "
             f"Es wurden {num_arguments} Argumente gefunden."
         )
     else:
         progress_info = (
-            f"Die Argumentsuche läuft! Es gibt insgesamt {total_num_matches} thematische Übereinstimmungen. "
-            f"Davon wurden bereits {analyzed_matches} auf Argumente überprüft. "
+            f"Die Argumentsuche läuft!  Zum Thema \"{topic}\" gibt es insgesamt {total_num_matches} thematische Übereinstimmungen. "
+            f"Insgesamt wurden bereits {analyzed_matches} auf Argumente überprüft. "
             f"Es wurden {num_arguments} Argumente gefunden."
         )
     return progress_info
@@ -180,6 +181,8 @@ def perform_argument_mining(input_text: str, selected_columns: list[str],
     accumulated_df.style.set_table_styles(
         [dict(selector="th", props=[("max-width", "50px")])]
     )
+    accumulated_df_to_show = deepcopy(accumulated_df)
+
     # Simulate finding arguments incrementally for the sake of demonstration
     print("Using this model: ", analyzer_dict["opinion_analyzer"].model_name_or_path)
     arguments = analyzer_dict["opinion_analyzer"].find_arguments(
@@ -189,7 +192,7 @@ def perform_argument_mining(input_text: str, selected_columns: list[str],
 
     matches_found, _ = has_values(arguments)
     if not matches_found:
-        progress_info = update_progress(0, 0, len(accumulated_df))
+        progress_info = update_progress("", 0, 0, len(accumulated_df))
         yield accumulated_df, progress_info
 
     neutral_count = 0
@@ -197,19 +200,24 @@ def perform_argument_mining(input_text: str, selected_columns: list[str],
 
     for idx, row in enumerate(arguments):
         if cancel_status["cancel"]:
-            progress_info = update_progress(row["num_matches"], already_analyzed, len(accumulated_df),
+            progress_info = update_progress(row["topic_original"], row["num_matches"], already_analyzed, len(accumulated_df),
                                             canceled=cancel_status["cancel"])
             yield accumulated_df, progress_info
             break
-        if neutral_count >= config["app"]["neutral_limit"]:
-            progress_info = update_progress(row["num_matches"], already_analyzed, len(accumulated_df),
-                                            canceled=cancel_status["cancel"])
+        if set(row["anlaysis_status"].values()) == {config["app"]["neutral_limit"]}:
+            progress_info = update_progress(row["topic_original"], row["num_matches"], already_analyzed, len(accumulated_df),
+                                            canceled=cancel_status["cancel"], neutral_limit=neutral_count)
             yield accumulated_df, progress_info
             break
+        if row["all_arguments_analyzed"]:
+            print("Iterator finished.")
+            progress_info = update_progress(row["topic_original"], row["num_matches"], already_analyzed, len(accumulated_df), exhausted=True)
+            yield accumulated_df, progress_info
+            break
+
         if row["label"] in ["pro", "contra"]:
             current_row_df = pd.DataFrame([row])
             current_row_df = rename_columns(current_row_df)
-            current_row_df = filter_columns(current_row_df, selected_columns)
             # Append the current row to the accumulated DataFrame
             accumulated_df = pd.concat(
                 [accumulated_df, current_row_df], ignore_index=True
@@ -217,15 +225,20 @@ def perform_argument_mining(input_text: str, selected_columns: list[str],
             accumulated_df.style.set_table_styles(
                 [dict(selector="th", props=[("max-width", "50px")])]
             )
-            neutral_count = 0
-        else:
-            neutral_count += 1
-            print(f"Number of neutral stances: {neutral_count}")
-        already_analyzed += 1
-        progress_info = update_progress(row["num_matches"], already_analyzed, len(accumulated_df),
-                                        canceled=cancel_status["cancel"])
 
-        yield accumulated_df, progress_info
+            accumulated_df_to_show = deepcopy(accumulated_df)
+            accumulated_df_to_show = filter_columns(accumulated_df_to_show, selected_columns)
+            neutral_count = 0
+
+        already_analyzed += 1
+        progress_info = update_progress(row["topic_original"], row["num_matches"], already_analyzed, len(accumulated_df),
+                                        canceled=cancel_status["cancel"])
+        for _, col in COLUMN_RENAMING.items():
+            accumulated_df_to_show[col] = accumulated_df_to_show[col].apply(
+                lambda x: escape_xlsx_string(x) if isinstance(x, str) else x
+            )
+        print(set(row["anlaysis_status"].values()))
+        yield accumulated_df_to_show, progress_info
 
 
 # Function to reset the output table
@@ -390,11 +403,11 @@ with gr.Blocks() as interface:
             )
 
             # Update DataFrame display based on selected columns
-            column_selection.change(
+            """column_selection.change(
                 fn=filter_columns,
                 inputs=[output_table, column_selection],
                 outputs=output_table,
-            )
+            )"""
 # Launch the app with authentication
 if __name__ == "__main__":
     interface.launch(auth=LOGIN_CREDENTIALS, share=True)

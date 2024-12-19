@@ -24,7 +24,8 @@ database:
   chromadb: smart_opinion_default_collection
 app:
   column_renaming:
-    topic_original: Worum geht es?
+    filename: Quelle
+    topic_original: Thema
     label: Haltung
     context: Kontext
     argument_reason: Modellbegründung für gewählte Haltung
@@ -40,6 +41,7 @@ app:
   neutral_limit: 3
   pre_check: false
   stance_classification_method: finetuned
+  max_rows: 100
 
 
 

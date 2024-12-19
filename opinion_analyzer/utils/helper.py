@@ -54,6 +54,25 @@ def get_main_config() -> dict:
             models[key] = path
     return config
 
+def is_iterator_finished(iterator):
+    """
+    Check whether the given iterator has been fully consumed.
+
+    This function attempts to fetch the next item from the provided iterator
+    to determine if it has reached the end.
+
+    :param iterator: An iterator object to check.
+    :type iterator: iterator
+    :return: `True` if the iterator is finished, otherwise `False`.
+    :rtype: bool
+
+    :raises TypeError: If the argument is not an iterator.
+    """
+    try:
+        next(iterator)  # Try fetching the next item
+        return False  # If no exception, iterator is not finished
+    except StopIteration:
+        return True  # Iterator has finished
 
 def has_values(iterator):
     """
